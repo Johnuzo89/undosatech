@@ -50,7 +50,7 @@ const PRESETS = [
   {v:'custom',   l:'Custom',   rounds:null,epochs:null},
 ]
 function Badge({ status }) {
-  const m = {pending:['#f3f4f6','#374151','#e5e7eb'],running:['#f5f3ff','#6d28d9','#ddd6fe'],completed:['#ecfdf5','#065f46','#a7f3d0'],failed:['#fef2f2','#991b1b','#fecaca']}
+  const m = {pending:['#f3f4f6','#374151','#e5e7eb'],running:['#f5f3ff','#6d28d9','#ddd6fe'],completed:['#ecfdf5','#065f46','#a7f3d0'],failed:['#fef2f2','#991b1b','#fecaca'],cancelling:['#fff7ed','#c2410c','#fed7aa'],cancelled:['#f3f4f6','#374151','#e5e7eb']}
   const [bg,c,b] = m[status]||m.pending
   return <span style={{background:bg,color:c,border:`1px solid ${b}`,padding:'2px 10px',borderRadius:20,fontSize:11,fontWeight:600,display:'inline-flex',alignItems:'center',gap:5}}>
     {status==='running'&&<span style={{width:6,height:6,borderRadius:'50%',background:'#7c3aed',animation:'pulse 1.2s infinite',display:'inline-block'}}/>}{status}
@@ -199,6 +199,12 @@ function StudyView({ studyId, onBack }) {
   const tabBtn=t=>({padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:500,cursor:'pointer',border:'none',background:tab===t?'#1d4ed8':'#f3f4f6',color:tab===t?'#fff':'#6b7280'})
   const logCol={info:'#374151',success:'#059669',error:'#dc2626',node:'#6d28d9'}
   const COLORS=['#1d4ed8','#059669','#7c3aed','#d97706','#dc2626','#0891b2','#65a30d','#9333ea','#f59e0b','#10b981','#6366f1','#ef4444','#14b8a6','#f97316']
+  const cancelStudy=async()=>{
+    try{
+      await apiFetch(`/studies/${studyId}/cancel`,{method:'POST'})
+      addLog('🛑 Cancellation requested — stopping after current batch','error')
+    }catch(e){addLog(`Cancel failed: ${e.message}`,'error')}
+  }
   const downloadModel=async()=>{
     const r=await fetch(`${API}/studies/${studyId}/download`)
     if(!r.ok)return alert('Model not ready yet')
@@ -223,6 +229,7 @@ function StudyView({ studyId, onBack }) {
           <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
             {job.final_accuracy!=null&&<div style={{textAlign:'right'}}><div style={{fontSize:36,fontWeight:800,color:'#059669',lineHeight:1}}>{(job.final_accuracy*100).toFixed(1)}%</div><div style={{fontSize:11,color:'#9ca3af'}}>final accuracy</div></div>}
             {job.status==='completed'&&<button onClick={downloadModel} style={{padding:'7px 14px',background:'#059669',color:'#fff',borderRadius:8,fontSize:12,fontWeight:600,border:'none',cursor:'pointer'}}>⬇ Download model weights</button>}
+            {(job.status==='running'||job.status==='pending')&&<button onClick={cancelStudy} style={{padding:'7px 14px',background:'#dc2626',color:'#fff',borderRadius:8,fontSize:12,fontWeight:600,border:'none',cursor:'pointer'}}>🛑 Stop training</button>}
           </div>
         </div>
         {job.status==='running'&&job.num_rounds>0&&(

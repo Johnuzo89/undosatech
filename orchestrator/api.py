@@ -302,6 +302,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
                 for epoch in range(local_epochs):
                     for b_idx, batch in enumerate(tl):
+                        if jobs.get(study_id,{}).get("cancelled"): break
                         if b_idx % 5 == 0:
                             job["live_status"] = f"Node {i+1}/{num_nodes}: {node_names[i][:20]} — epoch {epoch+1}/{local_epochs} · batch {b_idx} processed"
                         X, y = batch[0].to(device), batch[1].to(device)
@@ -379,6 +380,11 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             round_results.append(summary)
             job["round_results"] = round_results
             audit(study_id,"round_completed",{"round":rnd,"global_accuracy":g_acc,"global_loss":g_loss})
+            if jobs.get(study_id,{}).get("cancelled"):
+                logger.info(f"[{study_id[:8]}] Cancelled by user after round {rnd}")
+                jobs[study_id]["status"] = "cancelled"
+                audit(study_id,"study_cancelled",{"after_round":rnd})
+                return
             logger.info(f"[{study_id[:8]}] Round {rnd} → global acc={g_acc:.3f}")
 
         # Save model
@@ -431,6 +437,17 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
 # ── REST endpoints ─────────────────────────────────────────────────────────────
 
+@app.post("/studies/{study_id}/cancel")
+def cancel_study(study_id: str):
+    if study_id not in jobs: raise HTTPException(404, "Not found")
+    if jobs[study_id]["status"] not in ["running","pending"]:
+        raise HTTPException(400, f"Cannot cancel study with status: {jobs[study_id]['status']}")
+    jobs[study_id]["cancelled"] = True
+    jobs[study_id]["status"] = "cancelling"
+    audit(study_id, "cancel_requested", {"requested_at": datetime.now(timezone.utc).isoformat()})
+    logger.info(f"[{study_id[:8]}] Cancel requested")
+    return {"status": "cancelling", "message": "Training will stop after current batch"}
+
 @app.get("/health")
 def health():
     return {
@@ -469,7 +486,7 @@ async def create_study(
         "researcher_name": researcher_name, "institution": institution,
         "dataset": dataset, "architecture": architecture,
         "num_rounds": num_rounds, "local_epochs": local_epochs,
-        "status": "pending", "current_round": 0, "round_results": [],
+        "status": "pending", "current_round": 0, "round_results": [], "cancelled": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "nodes": nodes_config,
         "upload_filename": file.filename if file else None,
