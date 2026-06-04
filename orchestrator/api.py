@@ -54,7 +54,7 @@ def get_dataloaders(dataset_name, upload_path, partition_id, num_partitions):
             tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5]*in_ch,[0.5]*in_ch)])
             train_ds = DataClass(split="train", transform=tf, download=True, root=str(UPLOADS_DIR))
             test_ds  = DataClass(split="test",  transform=tf, download=True, root=str(UPLOADS_DIR))
-            n = len(train_ds) // num_partitions
+            n = min(len(train_ds) // num_partitions, 5000)
             train_ds = Subset(train_ds, list(range(partition_id*n, min((partition_id+1)*n, len(train_ds)))))
             desc = f"{cls_name}: {len(train_ds)} train / {len(test_ds)} test · {n_cls} classes"
             return DataLoader(train_ds,32,shuffle=True,num_workers=0), DataLoader(test_ds,32,shuffle=False,num_workers=0), n_cls, in_ch, desc
