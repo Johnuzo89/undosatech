@@ -174,6 +174,7 @@ function StudyView({ studyId, onBack }) {
         const data=await apiFetch(`/studies/${studyId}`)
         setJob(data)
         if(prev.status===null){addLog(`✅ Connected — ${data.study_name}`,'success');addLog(`   Dataset: ${data.dataset}  ·  Architecture: ${data.architecture}  ·  ${data.num_rounds} rounds`);if(data.data_description)addLog(`   Data: ${data.data_description}`)}
+        if(data.live_status&&data.status==='running'){addLog('   ⏳ '+data.live_status,'info')}
         if(data.status==='running'&&prev.status!=='running')addLog(`⚡ Training started — FedAvg across ${data.nodes?.length||2} nodes`)
         const rounds=data.round_results||[]
         if(rounds.length>prev.round){
