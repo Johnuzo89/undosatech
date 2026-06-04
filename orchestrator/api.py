@@ -301,11 +301,9 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 logger.info(f'[{study_id[:8]}]   Training {node_names[i][:25]}...')
 
                 for epoch in range(local_epochs):
-                    batches = list(tl)
-                    for b_idx, batch in enumerate(batches):
-                        if b_idx % 10 == 0:
-                            pct = int((b_idx/max(len(batches),1))*100)
-                            job["live_status"] = f"Node {i+1}/{num_nodes}: {node_names[i][:20]} — epoch {epoch+1}/{local_epochs} · batch {b_idx}/{len(batches)} ({pct}%)"
+                    for b_idx, batch in enumerate(tl):
+                        if b_idx % 5 == 0:
+                            job["live_status"] = f"Node {i+1}/{num_nodes}: {node_names[i][:20]} — epoch {epoch+1}/{local_epochs} · batch {b_idx} processed"
                         X, y = batch[0].to(device), batch[1].to(device)
                         if y.dim()>1: y=y.squeeze(1)
                         opt.zero_grad()
