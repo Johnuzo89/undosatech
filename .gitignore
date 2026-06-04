@@ -1,0 +1,9 @@
+weights/
+uploads/
+__pycache__/
+*.pyc
+*.pt
+*.npz
+portal/node_modules/
+*.jsonl
+.env
