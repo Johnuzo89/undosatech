@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useRef, useCallback, createContext, useContext } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from 'recharts'
+import NodeRegistry from './components/NodeRegistry'
+import MyStudies from './components/MyStudies'
 
-const SUPABASE_URL = 'https://hpfuacpmocnsxdgbnidm.supabase.co'
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwZnVhY3Btb2Nuc3hkZ2JuaWRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1ODQxMzEsImV4cCI6MjA5NjE2MDEzMX0.eqcNgiN7ttcMVAAbJ8NwQY9g5UJIjkH8o_I4STT7UEM'
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
-
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+)
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-// Institutional domain detection
 const INSTANT_DOMAINS = ['nhs.uk','nhs.net','ac.uk','edu','edu.au','ac.nz','ac.za','uni-','tu-','eth.ch','epfl.ch','cam.ac.uk','ox.ac.uk','ucl.ac.uk','imperial.ac.uk','kcl.ac.uk','ed.ac.uk','dundee.ac.uk','gla.ac.uk','abdn.ac.uk','st-andrews.ac.uk','hw.ac.uk','strath.ac.uk','napier.ac.uk']
 
 function isInstitutional(email) {
@@ -89,7 +90,7 @@ function Stat({ label, value, color, sub }) {
 // ── AUTH SCREENS ──────────────────────────────────────────────────────────────
 
 function AuthScreen({ onAuth }) {
-  const [mode, setMode] = useState('login') // login | signup | apply | verify
+  const [mode, setMode] = useState('login')
   const [form, setForm] = useState({ email:'', password:'', name:'', institution:'', role:'', research_area:'' })
   const [busy, setBusy] = useState(false)
   const [err,  setErr]  = useState(null)
@@ -126,7 +127,6 @@ function AuthScreen({ onAuth }) {
 
   const handleApply = async e => {
     e.preventDefault(); setBusy(true); setErr(null)
-    // Store application in Supabase
     const { error } = await supabase.from('access_requests').insert({
       email: form.email, full_name: form.name,
       institution: form.institution, role: form.role,
@@ -149,17 +149,15 @@ function AuthScreen({ onAuth }) {
           <div style={{fontSize:14,color:'#94a3b8'}}>Federated Research Platform</div>
           <div style={{fontSize:12,color:'#64748b',marginTop:4}}>Privacy-preserving AI for medical science</div>
         </div>
-
         <div style={{background:'#fff',borderRadius:16,padding:28,boxShadow:'0 25px 50px rgba(0,0,0,0.4)'}}>
           {mode === 'verify' && (
             <div style={{textAlign:'center',padding:'20px 0'}}>
               <div style={{fontSize:40,marginBottom:12}}>📧</div>
               <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>Check your email</div>
-              <div style={{fontSize:13,color:'#6b7280',marginBottom:16}}>We sent a verification link to <strong>{form.email}</strong>. Click it to activate your account.</div>
+              <div style={{fontSize:13,color:'#6b7280',marginBottom:16}}>We sent a verification link to <strong>{form.email}</strong>.</div>
               <button onClick={()=>setMode('login')} style={{...btnPrimary,width:'auto',padding:'8px 20px'}}>Back to login</button>
             </div>
           )}
-
           {msg && mode === 'apply' && (
             <div style={{textAlign:'center',padding:'20px 0'}}>
               <div style={{fontSize:40,marginBottom:12}}>✅</div>
@@ -168,7 +166,6 @@ function AuthScreen({ onAuth }) {
               <button onClick={()=>{setMode('login');setMsg(null)}} style={{...btnPrimary,width:'auto',padding:'8px 20px'}}>Back to login</button>
             </div>
           )}
-
           {mode === 'login' && !msg && (
             <>
               <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>Sign in to your account</div>
@@ -192,11 +189,10 @@ function AuthScreen({ onAuth }) {
               </div>
             </>
           )}
-
           {mode === 'signup' && !msg && (
             <>
               <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>Create your account</div>
-              <div style={{fontSize:12,color:'#6b7280',marginBottom:16}}>NHS and university emails get instant access. Others go through a quick approval.</div>
+              <div style={{fontSize:12,color:'#6b7280',marginBottom:16}}>NHS and university emails get instant access.</div>
               <button onClick={handleGoogleLogin} style={btnGoogle}>
                 <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
                 Sign up with Google
@@ -224,7 +220,6 @@ function AuthScreen({ onAuth }) {
               </div>
             </>
           )}
-
           {mode === 'apply' && !msg && (
             <>
               <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>Apply for access</div>
@@ -234,12 +229,12 @@ function AuthScreen({ onAuth }) {
                 <input style={inputStyle} required placeholder="Dr. John Ohanebo" value={form.name} onChange={e=>set('name',e.target.value)}/>
                 <label style={S.lbl}>Email *</label>
                 <input style={inputStyle} type="email" required value={form.email} onChange={e=>set('email',e.target.value)}/>
-                <label style={S.lbl}>Institution / Organisation *</label>
+                <label style={S.lbl}>Institution *</label>
                 <input style={inputStyle} required placeholder="Independent researcher / Company / Hospital" value={form.institution} onChange={e=>set('institution',e.target.value)}/>
                 <label style={S.lbl}>Your role *</label>
-                <input style={inputStyle} required placeholder="e.g. Clinical researcher, Data scientist, Clinician" value={form.role} onChange={e=>set('role',e.target.value)}/>
+                <input style={inputStyle} required placeholder="e.g. Clinical researcher, Data scientist" value={form.role} onChange={e=>set('role',e.target.value)}/>
                 <label style={S.lbl}>Research area *</label>
-                <input style={inputStyle} required placeholder="e.g. Retinal imaging, Neuroscience, Oncology" value={form.research_area} onChange={e=>set('research_area',e.target.value)}/>
+                <input style={inputStyle} required placeholder="e.g. Retinal imaging, Neuroscience" value={form.research_area} onChange={e=>set('research_area',e.target.value)}/>
                 {err&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
                 <button type="submit" disabled={busy} style={btnPrimary}>{busy?'Submitting…':'Submit application'}</button>
               </form>
@@ -249,7 +244,6 @@ function AuthScreen({ onAuth }) {
             </>
           )}
         </div>
-
         <div style={{textAlign:'center',marginTop:16,fontSize:11,color:'#475569'}}>
           By signing in you agree to our research data governance framework.<br/>
           All activity is logged in an immutable audit trail.
@@ -259,9 +253,9 @@ function AuthScreen({ onAuth }) {
   )
 }
 
-// ── MAIN APP (authenticated) ──────────────────────────────────────────────────
+// ── LAUNCH FORM ───────────────────────────────────────────────────────────────
 
-function LaunchForm({ onLaunched, user }) {
+function LaunchForm({ onLaunched, user, preselectedNodes = [] }) {
   const [file,setFile]=useState(null); const [drag,setDrag]=useState(false)
   const [busy,setBusy]=useState(false); const [err,setErr]=useState(null)
   const [preset,setPreset]=useState('standard')
@@ -272,21 +266,36 @@ function LaunchForm({ onLaunched, user }) {
   })
   const ref=useRef(); const set=(k,v)=>setForm(f=>({...f,[k]:v}))
   const applyPreset=(p)=>{setPreset(p);const f=PRESETS.find(x=>x.v===p);if(f&&f.rounds){set('num_rounds',f.rounds);set('local_epochs',f.epochs)}}
+
+  const defaultNodes = [
+    {node_id:'nhs-moorfields-sim',institution_name:'NHS Moorfields Eye Hospital (Simulated)',partition_id:0},
+    {node_id:'uni-edinburgh-sim',institution_name:'University of Edinburgh (Simulated)',partition_id:1}
+  ]
+
   const submit=async e=>{
     e.preventDefault();setBusy(true);setErr(null)
     try{
       const fd=new FormData()
       Object.entries(form).forEach(([k,v])=>fd.append(k,v))
-      fd.append('nodes',JSON.stringify([{node_id:'moorfields-001',institution_name:'NHS Moorfields Eye Hospital',partition_id:0},{node_id:'edinburgh-001',institution_name:'University of Edinburgh Medical School',partition_id:1}]))
+      const nodes = preselectedNodes.length > 0
+        ? preselectedNodes.map((id, i) => ({node_id: id, institution_name: id, partition_id: i}))
+        : defaultNodes
+      fd.append('nodes', JSON.stringify(nodes))
       if(file)fd.append('file',file)
       const r=await apiFetch('/studies',{method:'POST',body:fd})
       onLaunched(r.study_id)
     }catch(e){setErr(e.message)}finally{setBusy(false)}
   }
+
   return(
     <form onSubmit={submit} style={{maxWidth:620}}>
       <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Launch a federated study</h1>
-      <p style={{fontSize:13,color:'#6b7280',marginBottom:20}}>Real federated training across NHS institution nodes. Raw data never leaves its node — only model gradients are exchanged via FedAvg.</p>
+      <p style={{fontSize:13,color:'#6b7280',marginBottom:20}}>Real federated training across institution nodes. Raw data never leaves its node — only model gradients are exchanged via FedAvg.</p>
+      {preselectedNodes.length > 0 && (
+        <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:12,color:'#065f46'}}>
+          ✓ {preselectedNodes.length} node{preselectedNodes.length>1?'s':''} selected from Node Registry: {preselectedNodes.join(', ')}
+        </div>
+      )}
       <div style={S.card}>
         <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>Study details</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -356,6 +365,8 @@ function LaunchForm({ onLaunched, user }) {
   )
 }
 
+// ── STUDY VIEW ────────────────────────────────────────────────────────────────
+
 function StudyView({ studyId, onBack }) {
   const [job,setJob]=useState(null); const [audit,setAudit]=useState([])
   const [tab,setTab]=useState('live')
@@ -369,42 +380,43 @@ function StudyView({ studyId, onBack }) {
       try{
         const data=await apiFetch(`/studies/${studyId}`)
         setJob(data)
-        if(prev.status===null){addLog(`✅ Connected — ${data.study_name}`,'success');addLog(`   Dataset: ${data.dataset}  ·  Architecture: ${data.architecture}  ·  ${data.num_rounds} rounds`);if(data.data_description)addLog(`   Data: ${data.data_description}`)}
+        if(prev.status===null){addLog(`✅ Connected — ${data.study_name||data.name}`,'success');addLog(`   Dataset: ${data.dataset}  ·  Architecture: ${data.architecture||data.model}  ·  ${data.num_rounds||data.total_rounds} rounds`);if(data.data_description)addLog(`   Data: ${data.data_description}`)}
         if(data.live_status&&data.status==='running'&&data.live_status!==prev.liveStatus){addLog(`   ⏳ ${data.live_status}`,'info');prev.liveStatus=data.live_status}
         if(data.status==='running'&&prev.status!=='running')addLog(`⚡ Training started — FedAvg across ${data.nodes?.length||2} nodes`)
-        const rounds=data.round_results||[]
+        const rounds=data.round_results||data.rounds||[]
         if(rounds.length>prev.round){
           for(let i=prev.round;i<rounds.length;i++){
             const r=rounds[i]
-            addLog(`⚡ Round ${r.round}/${data.num_rounds} — distributing global model…`)
-            r.node_metrics?.forEach(n=>{addLog(`   🏥 ${n.institution}`,'node');addLog(`      acc ${(n.accuracy*100).toFixed(1)}%  ·  loss ${n.loss.toFixed(4)}  ·  ${n.num_examples} samples`,'node')})
-            addLog(`✓ Round ${r.round} complete — global acc ${(r.global_accuracy*100).toFixed(1)}%  ·  loss ${r.global_loss.toFixed(4)}`,'success')
+            addLog(`⚡ Round ${r.round||r.round_number}/${data.num_rounds||data.total_rounds} — aggregating…`)
+            r.node_metrics?.forEach(n=>{addLog(`   🏥 ${n.institution||n.node_id}`,'node');addLog(`      acc ${(n.accuracy*100).toFixed(1)}%  ·  loss ${n.loss?.toFixed(4)}  ·  ${n.num_examples||0} samples`,'node')})
+            addLog(`✓ Round complete — global acc ${((r.global_accuracy||r.accuracy||0)*100).toFixed(1)}%`,'success')
           }
           prev.round=rounds.length
         }
-        if(data.status==='completed'&&prev.status!=='completed'){addLog(`🎉 Done! Final accuracy: ${(data.final_accuracy*100).toFixed(1)}%`,'success');apiFetch(`/studies/${studyId}/audit`).then(a=>setAudit(a.events)).catch(()=>{})}
-        if(data.status==='cancelled'&&prev.status!=='cancelled')addLog(`🛑 Training stopped by user`,'error')
-        if(data.status==='failed'&&prev.status!=='failed')addLog(`❌ Failed: ${data.error}`,'error')
+        if(data.status==='completed'&&prev.status!=='completed'){addLog(`🎉 Done! Final accuracy: ${((data.final_accuracy||0)*100).toFixed(1)}%`,'success');apiFetch(`/studies/${studyId}/audit`).then(a=>setAudit(a.events)).catch(()=>{})}
+        if((data.status==='cancelled'||data.status==='stopped')&&prev.status!==data.status)addLog(`🛑 Training stopped by user`,'error')
+        if(data.status==='failed'&&prev.status!=='failed')addLog(`❌ Failed: ${data.error||data.error_message}`,'error')
         prev.status=data.status
       }catch(e){addLog(`⚠ Poll error: ${e.message}`,'error')}
     }
-    poll();const id=setInterval(()=>{if(['completed','cancelled','failed'].includes(job?.status))return;poll()},2000);return()=>clearInterval(id)
+    poll();const id=setInterval(()=>{if(['completed','cancelled','failed','stopped'].includes(job?.status))return;poll()},2000);return()=>clearInterval(id)
   },[studyId])
-  const chart=(job?.round_results||[]).map(r=>({round:`R${r.round}`,acc:+(r.global_accuracy*100).toFixed(2),loss:+r.global_loss.toFixed(4)}))
-  const lastRound=job?.round_results?.[job.round_results.length-1]
-  const archInfo=ARCH_INFO[job?.architecture]||{}
+  const rounds = job?.round_results||job?.rounds||[]
+  const chart=rounds.map(r=>({round:`R${r.round||r.round_number}`,acc:+((r.global_accuracy||r.accuracy||0)*100).toFixed(2),loss:+(r.global_loss||r.loss||0).toFixed(4)}))
+  const lastRound=rounds[rounds.length-1]
+  const archInfo=ARCH_INFO[job?.architecture||job?.model]||{}
   const tabBtn=t=>({padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:500,cursor:'pointer',border:'none',background:tab===t?'#1d4ed8':'#f3f4f6',color:tab===t?'#fff':'#6b7280'})
   const logCol={info:'#374151',success:'#059669',error:'#dc2626',node:'#6d28d9'}
   const cancelStudy=async()=>{
     if(!confirm('Stop this training run?'))return
-    try{await apiFetch(`/studies/${studyId}/cancel`,{method:'POST'});addLog('🛑 Stop requested — will stop after current batch','error')}
+    try{await apiFetch(`/studies/${studyId}/cancel`,{method:'POST'});addLog('🛑 Stop requested','error')}
     catch(e){addLog(`Cancel failed: ${e.message}`,'error')}
   }
   const downloadModel=async()=>{
     const r=await fetch(`${API}/studies/${studyId}/download`)
     if(!r.ok)return alert('Model not ready yet')
     const blob=await r.blob();const url=URL.createObjectURL(blob)
-    const a=document.createElement('a');a.href=url;a.download=`undosatech_${job?.architecture}_${studyId.slice(0,8)}.pt`;a.click();URL.revokeObjectURL(url)
+    const a=document.createElement('a');a.href=url;a.download=`undosatech_${job?.architecture||job?.model}_${studyId.slice(0,8)}.pt`;a.click();URL.revokeObjectURL(url)
   }
   return(
     <div>
@@ -412,11 +424,11 @@ function StudyView({ studyId, onBack }) {
       {job?<>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
           <div>
-            <h2 style={{fontSize:20,fontWeight:700,marginBottom:4}}>{job.study_name}</h2>
-            <div style={{fontSize:12,color:'#9ca3af',marginBottom:8}}>{job.researcher_name} · {job.institution}</div>
+            <h2 style={{fontSize:20,fontWeight:700,marginBottom:4}}>{job.study_name||job.name}</h2>
+            <div style={{fontSize:12,color:'#9ca3af',marginBottom:8}}>{job.researcher_name||job.user_email} · {job.institution||''}</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
               <Badge status={job.status}/>
-              {job.architecture&&<span style={{background:'#eff6ff',color:'#1e40af',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{archInfo.name||job.architecture}</span>}
+              {(job.architecture||job.model)&&<span style={{background:'#eff6ff',color:'#1e40af',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{archInfo.name||job.architecture||job.model}</span>}
               {job.dataset&&<span style={{background:'#f5f3ff',color:'#5b21b6',border:'1px solid #ddd6fe',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{job.dataset}</span>}
               {archInfo.params&&<span style={{background:'#f9fafb',color:'#6b7280',border:'1px solid #e5e7eb',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{archInfo.params} params</span>}
             </div>
@@ -427,16 +439,16 @@ function StudyView({ studyId, onBack }) {
             {['running','pending'].includes(job.status)&&<button onClick={cancelStudy} style={{padding:'7px 14px',background:'#dc2626',color:'#fff',borderRadius:8,fontSize:12,fontWeight:600,border:'none',cursor:'pointer'}}>🛑 Stop training</button>}
           </div>
         </div>
-        {job.status==='running'&&job.num_rounds>0&&(
+        {job.status==='running'&&(job.num_rounds||job.total_rounds)>0&&(
           <div style={{marginBottom:14}}>
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#6b7280',marginBottom:4}}><span>Round {job.current_round} of {job.num_rounds}</span><span>{Math.round(((job.current_round||0)/job.num_rounds)*100)}%</span></div>
-            <div style={{height:7,background:'#f3f4f6',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:`${((job.current_round||0)/job.num_rounds)*100}%`,background:'linear-gradient(90deg,#1d4ed8,#7c3aed)',borderRadius:4,transition:'width 0.6s ease'}}/></div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#6b7280',marginBottom:4}}><span>Round {job.current_round} of {job.num_rounds||job.total_rounds}</span><span>{Math.round(((job.current_round||0)/(job.num_rounds||job.total_rounds||1))*100)}%</span></div>
+            <div style={{height:7,background:'#f3f4f6',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:`${((job.current_round||0)/(job.num_rounds||job.total_rounds||1))*100}%`,background:'linear-gradient(90deg,#1d4ed8,#7c3aed)',borderRadius:4,transition:'width 0.6s ease'}}/></div>
           </div>
         )}
         {job.data_description&&<div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'8px 14px',fontSize:12,color:'#065f46',marginBottom:14}}>📊 {job.data_description}</div>}
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:10,marginBottom:16}}>
           <Stat label="Status" value={job.status}/>
-          <Stat label="Rounds" value={`${job.current_round||0}/${job.num_rounds}`} color="#1d4ed8"/>
+          <Stat label="Rounds" value={`${job.current_round||0}/${job.num_rounds||job.total_rounds}`} color="#1d4ed8"/>
           {job.final_accuracy!=null&&<Stat label="Accuracy" value={`${(job.final_accuracy*100).toFixed(1)}%`} color="#059669"/>}
           {job.final_loss!=null&&<Stat label="Loss" value={job.final_loss?.toFixed(4)}/>}
           {job.num_classes&&<Stat label="Classes" value={job.num_classes}/>}
@@ -469,8 +481,11 @@ function StudyView({ studyId, onBack }) {
         {tab==='per-class'&&<div style={S.card}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Per-class accuracy (latest round)</div>
           {lastRound?.per_class_accuracy?(()=>{
-            const labels=job.class_names||job.interpretability?.class_labels||lastRound.per_class_accuracy.map((_,i)=>`Class ${i}`)
-            const data=lastRound.per_class_accuracy.map((acc,i)=>({name:labels[i]||`C${i}`,acc}))
+            const pcData = Array.isArray(lastRound.per_class_accuracy)
+              ? lastRound.per_class_accuracy
+              : Object.values(lastRound.per_class_accuracy)
+            const labels=job.class_names||job.interpretability?.class_labels||pcData.map((_,i)=>`Class ${i}`)
+            const data=pcData.map((acc,i)=>({name:labels[i]||`C${i}`,acc}))
             return<ResponsiveContainer width="100%" height={240}>
               <BarChart data={data} margin={{top:5,right:10,left:0,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
@@ -525,19 +540,21 @@ function StudyView({ studyId, onBack }) {
 function StudiesList({ studies, onSelect }) {
   if(!studies.length)return<div style={{textAlign:'center',padding:'60px 20px',color:'#9ca3af'}}><div style={{fontSize:40,marginBottom:12}}>🔬</div><div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>No studies yet</div><div style={{fontSize:13}}>Launch your first federated training study.</div></div>
   return<div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
-    {studies.map((s,i)=><div key={s.study_id} onClick={()=>onSelect(s.study_id)}
+    {studies.map((s,i)=><div key={s.study_id||s.id} onClick={()=>onSelect(s.study_id||s.id)}
       style={{display:'flex',alignItems:'center',gap:12,padding:'14px 20px',borderBottom:i<studies.length-1?'1px solid #f3f4f6':'none',cursor:'pointer'}}
       onMouseEnter={e=>e.currentTarget.style.background='#fafafa'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.study_name}</div>
-        <div style={{fontSize:11,color:'#9ca3af'}}>{s.researcher_name} · {s.dataset} · {ARCH_INFO[s.architecture]?.name||s.architecture} · {s.num_rounds} rounds</div>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.study_name||s.name}</div>
+        <div style={{fontSize:11,color:'#9ca3af'}}>{s.researcher_name||s.user_email} · {s.dataset} · {ARCH_INFO[s.architecture||s.model]?.name||s.architecture||s.model} · {s.num_rounds||s.total_rounds} rounds</div>
       </div>
-      {s.status==='running'&&<div style={{fontSize:12,color:'#7c3aed',fontWeight:600}}>R{s.current_round}/{s.num_rounds}</div>}
+      {s.status==='running'&&<div style={{fontSize:12,color:'#7c3aed',fontWeight:600}}>R{s.current_round}/{s.num_rounds||s.total_rounds}</div>}
       {s.final_accuracy!=null&&<div style={{fontWeight:700,color:'#059669',fontSize:16}}>{(s.final_accuracy*100).toFixed(1)}%</div>}
       <Badge status={s.status}/><span style={{color:'#d1d5db'}}>›</span>
     </div>)}
   </div>
 }
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -547,6 +564,7 @@ export default function App() {
   const [studies, setStudies] = useState([])
   const [selected,setSelected]= useState(null)
   const [online,  setOnline]  = useState(null)
+  const [selectedNodes, setSelectedNodes] = useState([])
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -559,9 +577,15 @@ export default function App() {
   },[])
 
   const refresh=useCallback(async()=>{
-    try{const d=await apiFetch('/studies');setStudies(d);setOnline(true)}
-    catch{setOnline(false)}
-  },[])
+    try{
+      const headers = session?.access_token ? {'Authorization': `Bearer ${session.access_token}`} : {}
+      const r = await fetch(`${API}/studies`, {headers})
+      if(!r.ok) throw new Error()
+      const d = await r.json()
+      setStudies(Array.isArray(d) ? d : (d.studies || []))
+      setOnline(true)
+    }catch{setOnline(false)}
+  },[session])
 
   useEffect(()=>{ if(user) refresh() },[user])
   useEffect(()=>{ const id=setInterval(()=>{ if(user) refresh() },3000); return()=>clearInterval(id) },[user,refresh])
@@ -574,6 +598,7 @@ export default function App() {
   const running=studies.filter(s=>s.status==='running').length
   const completed=studies.filter(s=>s.status==='completed').length
   const displayName=user.user_metadata?.full_name||user.email?.split('@')[0]||'Researcher'
+
   const nav=(t,label,badge)=><button onClick={()=>{setTab(t);if(t!=='studies')setSelected(null)}}
     style={{padding:'7px 16px',borderRadius:8,fontSize:13,fontWeight:tab===t?600:400,cursor:'pointer',border:'none',background:tab===t?'#1d4ed8':'transparent',color:tab===t?'#fff':'#9ca3af',display:'flex',alignItems:'center',gap:6}}>
     {label}{badge>0&&<span style={{background:'#7c3aed',color:'#fff',fontSize:10,padding:'1px 6px',borderRadius:10,fontWeight:700}}>{badge}</span>}
@@ -582,7 +607,9 @@ export default function App() {
   return<div style={{minHeight:'100vh',background:'#f9fafb'}}>
     <header style={{background:'#111827',padding:'0 24px',height:52,display:'flex',alignItems:'center',gap:14,position:'sticky',top:0,zIndex:10}}>
       <div style={{color:'#fff',fontWeight:700,fontSize:15,marginRight:8}}>UndosaTech <span style={{fontSize:10,fontWeight:400,color:'#6b7280'}}>Federated Research Platform</span></div>
-      {nav('launch','🚀 Launch',0)}{nav('studies','Studies',running)}
+      {nav('launch','🚀 Launch',0)}
+      {nav('nodes','⬡ Nodes', selectedNodes.length)}
+      {nav('studies','Studies',running)}
       <div style={{marginLeft:'auto',display:'flex',gap:12,alignItems:'center',fontSize:12}}>
         {completed>0&&<span style={{color:'#34d399'}}>{completed} completed</span>}
         <span style={{color:online?'#34d399':'#f87171',display:'flex',alignItems:'center',gap:5}}>
@@ -599,7 +626,14 @@ export default function App() {
       </div>
     </header>
     <div style={{maxWidth:820,width:'100%',margin:'0 auto',padding:'32px 20px'}}>
-      {tab==='launch'&&!selected&&<LaunchForm onLaunched={id=>{setSelected(id);setTab('studies');refresh()}} user={user}/>}
+      {tab==='launch'&&!selected&&<LaunchForm onLaunched={id=>{setSelected(id);setTab('studies');refresh()}} user={user} preselectedNodes={selectedNodes}/>}
+      {tab==='nodes'&&(
+        <NodeRegistry
+          session={session}
+          selectedNodes={selectedNodes}
+          onSelectionChange={setSelectedNodes}
+        />
+      )}
       {tab==='studies'&&!selected&&<>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
           <h1 style={{fontSize:22,fontWeight:700}}>Studies</h1>
