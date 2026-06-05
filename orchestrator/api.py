@@ -517,6 +517,7 @@ async def create_study(
         node_ids = [n.get("node_id", str(n)) if isinstance(n, dict) else str(n)
                     for n in nodes_config]
         store.create(
+            id=study_id,
             user_id=str(user.id), user_email=getattr(user, "email", ""),
             name=study_name, model=architecture, dataset=dataset,
             num_rounds=num_rounds, nodes=node_ids,

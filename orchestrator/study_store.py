@@ -49,6 +49,7 @@ class StudyStore:
     def create(
         self,
         *,
+        id: Optional[str] = None,
         user_id: str,
         user_email: str,
         name: str,
@@ -62,7 +63,7 @@ class StudyStore:
         dp_noise_multiplier: Optional[float] = None,
     ) -> dict:
         """Insert a new study and return its full record."""
-        study_id = str(uuid.uuid4())
+        study_id = id or str(uuid.uuid4())
         record = {
             "id": study_id,
             "user_id": user_id,
