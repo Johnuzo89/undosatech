@@ -367,7 +367,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
 
 // ── STUDY VIEW ────────────────────────────────────────────────────────────────
 
-function StudyView({ studyId, onBack }) {
+function StudyView({ studyId, onBack, session }) {
   const [job,setJob]=useState(null); const [audit,setAudit]=useState([])
   const [tab,setTab]=useState('live')
   const [log,setLog]=useState([{ts:new Date().toLocaleTimeString(),msg:'Connecting to study…',type:'info'}])
@@ -378,7 +378,7 @@ function StudyView({ studyId, onBack }) {
     let prev={status:null,round:0,liveStatus:null}
     const poll=async()=>{
       try{
-        const data=await apiFetch(`/studies/${studyId}`)
+        const data=await apiFetch(`/studies/${studyId}`,{},session?.access_token)
         setJob(data)
         if(prev.status===null){addLog(`✅ Connected — ${data.study_name||data.name}`,'success');addLog(`   Dataset: ${data.dataset}  ·  Architecture: ${data.architecture||data.model}  ·  ${data.num_rounds||data.total_rounds} rounds`);if(data.data_description)addLog(`   Data: ${data.data_description}`)}
         if(data.live_status&&data.status==='running'&&data.live_status!==prev.liveStatus){addLog(`   ⏳ ${data.live_status}`,'info');prev.liveStatus=data.live_status}
