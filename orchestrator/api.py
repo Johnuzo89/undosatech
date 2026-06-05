@@ -1,19 +1,18 @@
 """
-UndosaTech Orchestrator v5 — Universal uploads, all architectures
+UndosaTech Orchestrator v6 — Persistent Supabase storage + Node Registry
 """
-import json, logging, uuid, shutil, threading, os
-from datetime import datetime, timezone
+import json, logging, uuid, shutil, threading, os, hashlib, hmac, secrets
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("undosatech")
-
-app = FastAPI(title="UndosaTech API", version="5.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 WEIGHTS_DIR = Path("weights")
 UPLOADS_DIR = Path("uploads")
@@ -21,8 +20,51 @@ AUDIT_PATH  = Path("audit_log.jsonl")
 WEIGHTS_DIR.mkdir(exist_ok=True)
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-jobs: Dict[str, dict] = {}
+# ── Supabase ──────────────────────────────────────────────────────────────────
+SUPABASE_URL             = os.getenv("SUPABASE_URL", "https://hpfuacpmocnsxdgbnidm.supabase.co")
+SUPABASE_SERVICE_KEY     = os.getenv("SUPABASE_SERVICE_KEY", "")
+NODE_REGISTRATION_SECRET = os.getenv("NODE_REGISTRATION_SECRET", "change-me")
 
+supabase_admin = None
+store = None
+
+if SUPABASE_SERVICE_KEY:
+    try:
+        from supabase import create_client
+        supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        from study_store import StudyStore
+        store = StudyStore()
+        logger.info("Supabase connected ✓")
+    except Exception as e:
+        logger.warning(f"Supabase init failed: {e} — falling back to in-memory")
+
+# In-memory fallback (used if Supabase not configured)
+jobs: Dict[str, dict] = {}
+stop_events: Dict[str, bool] = {}
+
+
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app):
+    if store:
+        try:
+            interrupted = store.list_running()
+            for s in interrupted:
+                store.set_failed(s["id"], "Server restarted while training was running. Please re-launch.")
+                store.append_log(s["id"], "⚠️ Training interrupted by server restart.", level="warning")
+            if interrupted:
+                logger.info(f"Marked {len(interrupted)} interrupted studies as failed")
+        except Exception as e:
+            logger.warning(f"Crash recovery failed: {e}")
+    _node_monitor_loop()
+    yield
+
+app = FastAPI(title="UndosaTech API", version="6.0.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
+                   allow_methods=["*"], allow_headers=["*"])
+
+
+# ── Audit ─────────────────────────────────────────────────────────────────────
 def audit(study_id, event_type, data):
     row = {"event_id": str(uuid.uuid4()), "study_id": study_id,
            "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -30,29 +72,42 @@ def audit(study_id, event_type, data):
     with open(AUDIT_PATH, "a") as f:
         f.write(json.dumps(row) + "\n")
 
-# ── Universal data loader ─────────────────────────────────────────────────────
 
+# ── Auth helper ───────────────────────────────────────────────────────────────
+def _require_user(authorization: Optional[str]):
+    if not supabase_admin:
+        return type("User", (), {"id": "local", "email": "local@dev"})()
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    token = authorization.split(" ", 1)[1]
+    try:
+        result = supabase_admin.auth.get_user(token)
+        if not result or not result.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return result.user
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token validation failed")
+
+
+# ── Universal data loader ─────────────────────────────────────────────────────
 def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id: int, num_partitions: int):
-    """
-    Handles: MedMNIST datasets, NPZ, CSV, DICOM, ZIP of images, JPG/PNG folders
-    Returns: train_loader, test_loader, num_classes, in_channels, description, class_names
-    """
     import torch
     from torch.utils.data import DataLoader, TensorDataset, Subset, random_split
     import numpy as np
 
-    # MedMNIST built-in datasets
     medmnist_map = {
-        "octmnist":   ("OCTMNIST",    1, 4,  ["CNV","DME","DRUSEN","NORMAL"]),
-        "pathmnist":  ("PathMNIST",   3, 9,  ["ADI","BACK","DEB","LYM","MUC","MUS","NORM","STR","TUM"]),
-        "chestmnist": ("ChestMNIST",  1, 14, ["Atelectasis","Cardiomegaly","Effusion","Infiltration","Mass","Nodule","Pneumonia","Pneumothorax","Consolidation","Edema","Emphysema","Fibrosis","Pleural","Hernia"]),
-        "dermamnist": ("DermaMNIST",  3, 7,  ["MEL","NV","BCC","AK","BKL","DF","VASC"]),
-        "breastmnist":("BreastMNIST", 1, 2,  ["Benign","Malignant"]),
-        "bloodmnist": ("BloodMNIST",  3, 8,  ["Basophil","Eosinophil","Erythroblast","Ig","Lymphocyte","Monocyte","Neutrophil","Platelet"]),
-        "tissuemnist":("TissueMNIST", 1, 8,  ["Adipose","Background","Debris","Lymphocytes","Mucus","Smooth muscle","Normal colon mucosa","Cancer-associated stroma","Colorectal adenocarcinoma epithelium"]),
-        "retinamnist":("RetinaMNIST", 3, 5,  ["Grade 0","Grade 1","Grade 2","Grade 3","Grade 4"]),
-        "pneumoniamnist":("PneumoniaMNIST",1,2,["Normal","Pneumonia"]),
-        "organamnist":("OrganAMNIST", 1, 11, ["Bladder","Femur-L","Femur-R","Heart","Kidney-L","Kidney-R","Liver","Lung-L","Lung-R","Pancreas","Spleen"]),
+        "octmnist":      ("OCTMNIST",     1, 4,  ["CNV","DME","DRUSEN","NORMAL"]),
+        "pathmnist":     ("PathMNIST",    3, 9,  ["ADI","BACK","DEB","LYM","MUC","MUS","NORM","STR","TUM"]),
+        "chestmnist":    ("ChestMNIST",   1, 14, ["Atelectasis","Cardiomegaly","Effusion","Infiltration","Mass","Nodule","Pneumonia","Pneumothorax","Consolidation","Edema","Emphysema","Fibrosis","Pleural","Hernia"]),
+        "dermamnist":    ("DermaMNIST",   3, 7,  ["MEL","NV","BCC","AK","BKL","DF","VASC"]),
+        "breastmnist":   ("BreastMNIST",  1, 2,  ["Benign","Malignant"]),
+        "bloodmnist":    ("BloodMNIST",   3, 8,  ["Basophil","Eosinophil","Erythroblast","Ig","Lymphocyte","Monocyte","Neutrophil","Platelet"]),
+        "tissuemnist":   ("TissueMNIST",  1, 8,  ["Adipose","Background","Debris","Lymphocytes","Mucus","Smooth muscle","Normal colon mucosa","Cancer-associated stroma","Colorectal adenocarcinoma epithelium"]),
+        "retinamnist":   ("RetinaMNIST",  3, 5,  ["Grade 0","Grade 1","Grade 2","Grade 3","Grade 4"]),
+        "pneumoniamnist":("PneumoniaMNIST",1,2,  ["Normal","Pneumonia"]),
+        "organamnist":   ("OrganAMNIST",  1, 11, ["Bladder","Femur-L","Femur-R","Heart","Kidney-L","Kidney-R","Liver","Lung-L","Lung-R","Pancreas","Spleen"]),
     }
 
     if dataset_name.lower() in medmnist_map:
@@ -61,10 +116,7 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
             import medmnist
             from torchvision import transforms
             DataClass = getattr(medmnist, cls_name)
-            tf = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize([0.5]*in_ch, [0.5]*in_ch),
-            ])
+            tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5]*in_ch, [0.5]*in_ch)])
             train_ds = DataClass(split="train", transform=tf, download=True, root=str(UPLOADS_DIR))
             test_ds  = DataClass(split="test",  transform=tf, download=True, root=str(UPLOADS_DIR))
             n = min(len(train_ds) // num_partitions, 5000)
@@ -79,7 +131,6 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
     if upload_path and upload_path.exists():
         suffix = upload_path.suffix.lower()
 
-        # NPZ
         if suffix == ".npz":
             try:
                 data = np.load(str(upload_path), allow_pickle=True)
@@ -89,46 +140,34 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
                 if X.dim()==3: X=X.unsqueeze(1)
                 if X.shape[1] not in [1,3]: X=X.permute(0,3,1,2)
                 X = X/255.0 if X.max()>1 else X
-                n_cls = int(y.max().item())+1
-                in_ch = X.shape[1]
-                ds = TensorDataset(X,y)
-                n_train=int(len(ds)*0.8)
+                n_cls = int(y.max().item())+1; in_ch = X.shape[1]
+                ds = TensorDataset(X,y); n_train=int(len(ds)*0.8)
                 train_ds,test_ds=random_split(ds,[n_train,len(ds)-n_train])
-                desc=f"NPZ: {len(X)} samples · {n_cls} classes · {tuple(X.shape[1:])}"
                 return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
                         DataLoader(test_ds,32,shuffle=False,num_workers=0),
-                        n_cls,in_ch,desc,[f"Class {i}" for i in range(n_cls)])
+                        n_cls,in_ch,f"NPZ: {len(X)} samples",[f"Class {i}" for i in range(n_cls)])
             except Exception as e:
                 logger.warning(f"NPZ failed: {e}")
 
-        # CSV
         if suffix == ".csv":
             try:
                 import pandas as pd
                 df = pd.read_csv(str(upload_path))
-                y_raw = df.iloc[:,-1]
-                X_raw = df.iloc[:,:-1].values.astype("float32")
+                y_raw = df.iloc[:,-1]; X_raw = df.iloc[:,:-1].values.astype("float32")
                 classes = sorted(y_raw.unique())
                 y_enc = y_raw.map({c:i for i,c in enumerate(classes)}).values.astype("int64")
-                # Reshape for CNN: (N, 1, features, 1)
-                side = max(1, int(X_raw.shape[1]**0.5))
-                pad = side*side - X_raw.shape[1]
-                if pad > 0:
-                    X_raw = np.pad(X_raw, ((0,0),(0,pad)))
+                side = max(1, int(X_raw.shape[1]**0.5)); pad = side*side - X_raw.shape[1]
+                if pad > 0: X_raw = np.pad(X_raw, ((0,0),(0,pad)))
                 X_t = torch.FloatTensor(X_raw).reshape(-1,1,side,side)
-                y_t = torch.LongTensor(y_enc)
-                n_cls=len(classes); in_ch=1
-                ds=TensorDataset(X_t,y_t)
-                n_train=int(len(ds)*0.8)
+                y_t = torch.LongTensor(y_enc); n_cls=len(classes); in_ch=1
+                ds=TensorDataset(X_t,y_t); n_train=int(len(ds)*0.8)
                 train_ds,test_ds=random_split(ds,[n_train,len(ds)-n_train])
-                desc=f"CSV: {len(X_t)} rows · {X_raw.shape[1]} features · {n_cls} classes"
                 return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
                         DataLoader(test_ds,32,shuffle=False,num_workers=0),
-                        n_cls,in_ch,desc,[str(c) for c in classes])
+                        n_cls,in_ch,f"CSV: {len(X_t)} rows",[str(c) for c in classes])
             except Exception as e:
                 logger.warning(f"CSV failed: {e}")
 
-        # ZIP of images (class folders)
         if suffix == ".zip":
             try:
                 import zipfile
@@ -137,25 +176,17 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
                 extract_dir.mkdir(exist_ok=True)
                 with zipfile.ZipFile(str(upload_path),'r') as z:
                     z.extractall(str(extract_dir))
-                tf = transforms.Compose([
-                    transforms.Resize((28,28)),
-                    transforms.Grayscale(1),
-                    transforms.ToTensor(),
-                    transforms.Normalize([0.5],[0.5]),
-                ])
+                tf = transforms.Compose([transforms.Resize((28,28)), transforms.Grayscale(1),
+                                         transforms.ToTensor(), transforms.Normalize([0.5],[0.5])])
                 ds = datasets.ImageFolder(str(extract_dir), transform=tf)
-                n_cls=len(ds.classes); in_ch=1
-                class_names=ds.classes
-                n_train=int(len(ds)*0.8)
-                train_ds,test_ds=random_split(ds,[n_train,len(ds)-n_train])
-                desc=f"ZIP images: {len(ds)} samples · {n_cls} classes"
+                n_cls=len(ds.classes); in_ch=1; class_names=ds.classes
+                n_train=int(len(ds)*0.8); train_ds,test_ds=random_split(ds,[n_train,len(ds)-n_train])
                 return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
                         DataLoader(test_ds,32,shuffle=False,num_workers=0),
-                        n_cls,in_ch,desc,class_names)
+                        n_cls,in_ch,f"ZIP: {len(ds)} samples",class_names)
             except Exception as e:
                 logger.warning(f"ZIP failed: {e}")
 
-        # Single image or DICOM — treat as demo
         if suffix in [".dcm",".dicom"]:
             try:
                 import pydicom
@@ -163,13 +194,11 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
                 arr = ds_dcm.pixel_array.astype("float32")
                 arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)
                 X = torch.FloatTensor(arr).unsqueeze(0).unsqueeze(0).repeat(100,1,1,1)
-                y = torch.randint(0,2,(100,))
-                ds=TensorDataset(X,y)
+                y = torch.randint(0,2,(100,)); ds=TensorDataset(X,y)
                 train_ds,test_ds=random_split(ds,[80,20])
-                desc=f"DICOM: {ds_dcm.Modality if hasattr(ds_dcm,'Modality') else 'Unknown'} · demo mode"
                 return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
                         DataLoader(test_ds,32,shuffle=False,num_workers=0),
-                        2,1,desc,["Class 0","Class 1"])
+                        2,1,"DICOM demo",["Class 0","Class 1"])
             except Exception as e:
                 logger.warning(f"DICOM failed: {e}")
 
@@ -177,19 +206,16 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
     import torch
     torch.manual_seed(42)
     X=torch.randn(2000,1,28,28); y=torch.randint(0,4,(2000,))
-    ds=TensorDataset(X,y)
-    train_ds,test_ds=random_split(ds,[1600,400])
+    ds=TensorDataset(X,y); train_ds,test_ds=random_split(ds,[1600,400])
     return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
             DataLoader(test_ds,32,shuffle=False,num_workers=0),
             4,1,"Synthetic demo: 2000 samples · 4 classes",["Class A","Class B","Class C","Class D"])
 
 
 # ── Model builder ─────────────────────────────────────────────────────────────
-
 def build_model(num_classes, in_channels, arch="resnet18"):
     import torch.nn as nn
     from torchvision import models
-
     logger.info(f"Building {arch} · {in_channels}ch → {num_classes} classes")
 
     def adapt_first_conv(m, in_ch):
@@ -199,69 +225,67 @@ def build_model(num_classes, in_channels, arch="resnet18"):
 
     if arch == "resnet18":
         m = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-        m = adapt_first_conv(m, in_channels)
-        m.fc = nn.Linear(m.fc.in_features, num_classes)
-        return m
-
+        m = adapt_first_conv(m, in_channels); m.fc = nn.Linear(m.fc.in_features, num_classes); return m
     if arch == "resnet50":
         m = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-        m = adapt_first_conv(m, in_channels)
-        m.fc = nn.Linear(m.fc.in_features, num_classes)
-        return m
-
+        m = adapt_first_conv(m, in_channels); m.fc = nn.Linear(m.fc.in_features, num_classes); return m
     if arch == "resnet101":
         m = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V1)
-        m = adapt_first_conv(m, in_channels)
-        m.fc = nn.Linear(m.fc.in_features, num_classes)
-        return m
-
+        m = adapt_first_conv(m, in_channels); m.fc = nn.Linear(m.fc.in_features, num_classes); return m
     if arch == "efficientnet_b0":
         m = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
         if in_channels != 3:
             m.features[0][0] = nn.Conv2d(in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False)
-        m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes)
-        return m
-
+        m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes); return m
     if arch == "efficientnet_b4":
         m = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1)
         if in_channels != 3:
             m.features[0][0] = nn.Conv2d(in_channels, 48, kernel_size=3, stride=2, padding=1, bias=False)
-        m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes)
-        return m
-
+        m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes); return m
     if arch == "vit_b16":
         try:
             m = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_V1)
-            m.heads.head = nn.Linear(m.heads.head.in_features, num_classes)
-            return m
+            m.heads.head = nn.Linear(m.heads.head.in_features, num_classes); return m
         except Exception:
             logger.warning("ViT failed, falling back to ResNet18")
             m = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-            m = adapt_first_conv(m, in_channels)
-            m.fc = nn.Linear(m.fc.in_features, num_classes)
-            return m
+            m = adapt_first_conv(m, in_channels); m.fc = nn.Linear(m.fc.in_features, num_classes); return m
 
-    # Lightweight CNN default
-    return nn.Sequential(
-        nn.Conv2d(in_channels,32,3,padding=1),nn.BatchNorm2d(32),nn.ReLU(),nn.MaxPool2d(2),
-        nn.Conv2d(32,64,3,padding=1),nn.BatchNorm2d(64),nn.ReLU(),nn.AdaptiveAvgPool2d((4,4)),
-        nn.Flatten(),nn.Dropout(0.4),nn.Linear(64*16,256),nn.ReLU(),nn.Linear(256,num_classes),
+    return __import__('torch').nn.Sequential(
+        __import__('torch').nn.Conv2d(in_channels,32,3,padding=1),__import__('torch').nn.BatchNorm2d(32),__import__('torch').nn.ReLU(),__import__('torch').nn.MaxPool2d(2),
+        __import__('torch').nn.Conv2d(32,64,3,padding=1),__import__('torch').nn.BatchNorm2d(64),__import__('torch').nn.ReLU(),__import__('torch').nn.AdaptiveAvgPool2d((4,4)),
+        __import__('torch').nn.Flatten(),__import__('torch').nn.Dropout(0.4),__import__('torch').nn.Linear(64*16,256),__import__('torch').nn.ReLU(),__import__('torch').nn.Linear(256,num_classes),
     )
 
 
 # ── Training thread ───────────────────────────────────────────────────────────
-
 def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, arch, nodes_config):
     import torch, torch.nn as nn, torch.optim as optim
 
     logger.info(f"[{study_id[:8]}] Thread started — {arch} on {dataset_name}")
 
-    try:
-        job = jobs[study_id]
-        job["status"] = "running"
-        job["started_at"] = datetime.now(timezone.utc).isoformat()
+    def log(msg, level="info", round_number=None, metrics=None):
+        logger.info(f"[{study_id[:8]}] {msg}")
+        if store:
+            store.append_log(study_id, msg, level=level, round_number=round_number, metrics=metrics)
+        else:
+            jobs[study_id].setdefault("logs", []).append(msg)
 
-        node_names = [n["institution_name"] for n in nodes_config] if nodes_config else [
+    def update_job(**kwargs):
+        if store:
+            store.update(study_id, **kwargs)
+        else:
+            jobs[study_id].update(kwargs)
+
+    try:
+        if store:
+            store.set_running(study_id)
+        else:
+            jobs[study_id]["status"] = "running"
+            jobs[study_id]["started_at"] = datetime.now(timezone.utc).isoformat()
+
+        node_names = [n.get("institution_name", n) if isinstance(n, dict) else str(n)
+                      for n in nodes_config] if nodes_config else [
             "NHS Moorfields Eye Hospital", "University of Edinburgh Medical School"
         ]
         num_nodes = len(node_names)
@@ -273,14 +297,11 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 upload_path, dataset_name, i, num_nodes)
             node_loaders.append((tl, vl))
             if i == 0:
-                job.update({"data_description": desc, "num_classes": num_classes,
-                            "architecture": arch, "class_names": class_names})
-                logger.info(f"[{study_id[:8]}] {desc}")
+                update_job(data_description=desc, num_classes=num_classes,
+                           architecture=arch, class_names=class_names)
+                log(f"Dataset: {desc}")
 
-        audit(study_id, "study_started", {
-            "dataset": dataset_name, "arch": arch,
-            "nodes": node_names, "data": job["data_description"]
-        })
+        audit(study_id, "study_started", {"dataset": dataset_name, "arch": arch, "nodes": node_names})
 
         node_models = [build_model(num_classes, in_ch, arch).to(device) for _ in range(num_nodes)]
         node_optims = [optim.Adam(m.parameters(), lr=0.001, weight_decay=1e-4) for m in node_models]
@@ -289,29 +310,35 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
         round_results = []
 
         for rnd in range(1, num_rounds+1):
-            logger.info(f"[{study_id[:8]}] Round {rnd}/{num_rounds}")
-            job["current_round"] = rnd
+            # Check stop signal
+            if stop_events.get(study_id):
+                log("Training stopped by user", level="warning")
+                if store: store.set_stopped(study_id)
+                else: jobs[study_id]["status"] = "cancelled"
+                return
+
+            log(f"Round {rnd}/{num_rounds} — starting")
+            if store: store.set_round(study_id, rnd)
+            else: jobs[study_id]["current_round"] = rnd
+
             node_states, node_metrics = [], []
 
             for i, (model, opt, sched) in enumerate(zip(node_models, node_optims, schedulers)):
                 model.train()
                 tot_loss = correct = total = 0
                 tl, _ = node_loaders[i]
-                job['live_status'] = f'Node {i+1}/{num_nodes}: {node_names[i][:25]} — training...'
-                logger.info(f'[{study_id[:8]}]   Training {node_names[i][:25]}...')
+                log(f"Node {i+1}/{num_nodes}: {node_names[i][:30]} — training...")
 
                 for epoch in range(local_epochs):
                     for b_idx, batch in enumerate(tl):
-                        if jobs.get(study_id,{}).get("cancelled"): break
-                        if b_idx % 5 == 0:
-                            job["live_status"] = f"Node {i+1}/{num_nodes}: {node_names[i][:20]} — epoch {epoch+1}/{local_epochs} · batch {b_idx} processed"
+                        if stop_events.get(study_id): break
                         X, y = batch[0].to(device), batch[1].to(device)
                         if y.dim()>1: y=y.squeeze(1)
                         opt.zero_grad()
                         try:
                             out = model(X)
                         except Exception as e:
-                            logger.warning(f"Forward pass error: {e} — skipping batch")
+                            logger.warning(f"Forward pass error: {e}")
                             continue
                         loss = criterion(out, y.long())
                         loss.backward(); opt.step()
@@ -327,29 +354,26 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 node_metrics.append({
                     "node_id": f"node_{i}", "institution": node_names[i],
                     "accuracy": acc, "loss": lv, "num_examples": total,
-                    "learning_rate": lr, "consent_verified": True,
-                    "governance_status": "approved",
+                    "learning_rate": lr, "consent_verified": True, "governance_status": "approved",
                 })
-                logger.info(f"[{study_id[:8]}]   {node_names[i][:20]}: acc={acc:.3f} loss={lv:.4f}")
+                log(f"{node_names[i][:25]}: acc={acc:.3f} loss={lv:.4f}", round_number=rnd)
 
             # FedAvg
-            avg = {k: torch.stack([s[k].float() for s in node_states]).mean(0)
-                   for k in node_states[0]}
+            avg = {k: torch.stack([s[k].float() for s in node_states]).mean(0) for k in node_states[0]}
             for m in node_models: m.load_state_dict(avg)
 
             # Global eval
             node_models[0].eval()
             gc=gl=gt=0
-            _,vl=node_loaders[0]
+            _,vl_eval=node_loaders[0]
             with torch.no_grad():
-                for batch in vl:
+                for batch in vl_eval:
                     X,y=batch[0].to(device),batch[1].to(device)
                     if y.dim()>1: y=y.squeeze(1)
                     try:
                         out=node_models[0](X)
                         gl+=criterion(out,y.long()).item()*X.size(0)
-                        gc+=out.argmax(1).eq(y).sum().item()
-                        gt+=X.size(0)
+                        gc+=out.argmax(1).eq(y).sum().item(); gt+=X.size(0)
                     except: pass
 
             g_acc  = round(gc/max(gt,1), 4)
@@ -359,7 +383,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             pc_correct=[0]*num_classes; pc_total=[0]*num_classes
             node_models[0].eval()
             with torch.no_grad():
-                for batch in vl:
+                for batch in vl_eval:
                     X,y=batch[0].to(device),batch[1].to(device)
                     if y.dim()>1: y=y.squeeze(1)
                     try:
@@ -371,32 +395,35 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                     except: pass
 
             per_class=[round(pc_correct[c]/max(pc_total[c],1)*100,1) for c in range(num_classes)]
+            per_class_dict = {(class_names[c] if c < len(class_names) else f"Class {c}"): per_class[c]
+                              for c in range(num_classes)}
 
-            summary={
+            summary = {
                 "round": rnd, "global_accuracy": g_acc, "global_loss": g_loss,
                 "per_class_accuracy": per_class, "node_metrics": node_metrics,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             round_results.append(summary)
-            job["round_results"] = round_results
-            audit(study_id,"round_completed",{"round":rnd,"global_accuracy":g_acc,"global_loss":g_loss})
-            if jobs.get(study_id,{}).get("cancelled"):
-                logger.info(f"[{study_id[:8]}] Cancelled by user after round {rnd}")
-                jobs[study_id]["status"] = "cancelled"
-                audit(study_id,"study_cancelled",{"after_round":rnd})
-                return
-            logger.info(f"[{study_id[:8]}] Round {rnd} → global acc={g_acc:.3f}")
+
+            if store:
+                store.record_round(study_id, rnd, accuracy=g_acc, loss=g_loss,
+                                   node_metrics={nm["institution"]: nm for nm in node_metrics})
+            else:
+                jobs[study_id]["round_results"] = round_results
+
+            audit(study_id, "round_completed", {"round": rnd, "global_accuracy": g_acc})
+            log(f"Round {rnd} complete — global acc={g_acc:.3f} loss={g_loss:.4f}",
+                round_number=rnd, metrics={"accuracy": g_acc, "loss": g_loss})
 
         # Save model
         fp = WEIGHTS_DIR / f"study_{study_id}_{arch}_final.pt"
         torch.save(node_models[0].state_dict(), str(fp))
 
-        # Also save model info JSON
         model_info = {
             "study_id": study_id, "architecture": arch,
             "num_classes": num_classes, "in_channels": in_ch,
-            "class_names": job.get("class_names", []),
-            "dataset": dataset_name, "final_accuracy": round_results[-1]["global_accuracy"],
+            "class_names": class_names, "dataset": dataset_name,
+            "final_accuracy": round_results[-1]["global_accuracy"],
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }
         with open(WEIGHTS_DIR / f"study_{study_id}_model_info.json","w") as f:
@@ -404,57 +431,61 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
         interp = {
             "method": f"Grad-CAM + Integrated Gradients ({arch} final layer)",
-            "class_labels": job.get("class_names", [f"Class {i}" for i in range(num_classes)]),
+            "class_labels": class_names,
             "top_features": [
                 {"feature":"Primary activation region","importance":0.38,"direction":"positive"},
                 {"feature":"Secondary texture pattern","importance":0.29,"direction":"positive"},
                 {"feature":"Background suppression","importance":0.19,"direction":"negative"},
                 {"feature":"Edge and boundary response","importance":0.14,"direction":"positive"},
             ],
-            "summary": f"Gradient-weighted class activation maps from the federated {arch} global model after FedAvg aggregation across {len(node_names)} institutional nodes.",
+            "summary": f"Federated {arch} global model after FedAvg across {len(node_names)} nodes.",
         }
 
-        job.update({
-            "status": "completed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "final_accuracy": round_results[-1]["global_accuracy"],
-            "final_loss": round_results[-1]["global_loss"],
-            "model_path": str(fp),
-            "model_info": model_info,
-            "interpretability": interp,
-        })
-        audit(study_id,"study_completed",{"final_accuracy":job["final_accuracy"],"model_path":str(fp)})
-        logger.info(f"[{study_id[:8]}] COMPLETED ✓ acc={job['final_accuracy']:.3f} saved to {fp}")
+        final_acc = round_results[-1]["global_accuracy"]
+        final_loss = round_results[-1]["global_loss"]
+
+        if store:
+            store.set_completed(study_id,
+                final_accuracy=final_acc, final_loss=final_loss,
+                per_class_accuracy=per_class_dict,
+                model_download_path=str(fp))
+        else:
+            jobs[study_id].update({
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "final_accuracy": final_acc, "final_loss": final_loss,
+                "model_path": str(fp), "model_info": model_info, "interpretability": interp,
+            })
+
+        audit(study_id, "study_completed", {"final_accuracy": final_acc, "model_path": str(fp)})
+        log(f"✓ Training complete. Final accuracy: {final_acc:.3f}")
 
     except Exception as e:
         import traceback
         logger.error(f"[{study_id[:8]}] FAILED: {e}\n{traceback.format_exc()}")
-        if study_id in jobs:
+        if store:
+            store.set_failed(study_id, str(e))
+            store.append_log(study_id, f"Training failed: {e}", level="error")
+        elif study_id in jobs:
             jobs[study_id]["status"] = "failed"
-            jobs[study_id]["error"]  = str(e)
-        audit(study_id,"study_failed",{"error":str(e)})
+            jobs[study_id]["error"] = str(e)
+        audit(study_id, "study_failed", {"error": str(e)})
 
 
-# ── REST endpoints ─────────────────────────────────────────────────────────────
-
-@app.post("/studies/{study_id}/cancel")
-def cancel_study(study_id: str):
-    if study_id not in jobs: raise HTTPException(404, "Not found")
-    if jobs[study_id]["status"] not in ["running","pending"]:
-        raise HTTPException(400, f"Cannot cancel study with status: {jobs[study_id]['status']}")
-    jobs[study_id]["cancelled"] = True
-    jobs[study_id]["status"] = "cancelling"
-    audit(study_id, "cancel_requested", {"requested_at": datetime.now(timezone.utc).isoformat()})
-    logger.info(f"[{study_id[:8]}] Cancel requested")
-    return {"status": "cancelling", "message": "Training will stop after current batch"}
+# ════════════════════════════════════════════════════════════════
+# REST ENDPOINTS
+# ════════════════════════════════════════════════════════════════
 
 @app.get("/health")
 def health():
     return {
-        "status": "ok", "version": "5.0.0",
-        "studies": len(jobs),
-        "completed": sum(1 for j in jobs.values() if j.get("status")=="completed"),
+        "status": "ok", "version": "6.0.0",
+        "storage": "supabase" if store else "in-memory",
+        "studies": len(jobs) if not store else "see /studies",
     }
+
+
+# ── Studies ───────────────────────────────────────────────────────────────────
 
 @app.post("/studies", status_code=201)
 async def create_study(
@@ -467,7 +498,9 @@ async def create_study(
     local_epochs:    int = Form(2),
     nodes:           str = Form("[]"),
     file: Optional[UploadFile] = File(None),
+    authorization: Optional[str] = Header(None),
 ):
+    user = _require_user(authorization)
     study_id    = str(uuid.uuid4())
     upload_path = None
 
@@ -476,21 +509,38 @@ async def create_study(
         upload_path = UPLOADS_DIR / f"{study_id}{suffix}"
         with open(upload_path,"wb") as f_out:
             shutil.copyfileobj(file.file, f_out)
-        logger.info(f"Saved upload: {upload_path} ({upload_path.stat().st_size/1024:.1f} KB)")
 
     try: nodes_config = json.loads(nodes)
     except: nodes_config = []
 
-    jobs[study_id] = {
-        "study_id": study_id, "study_name": study_name,
-        "researcher_name": researcher_name, "institution": institution,
-        "dataset": dataset, "architecture": architecture,
-        "num_rounds": num_rounds, "local_epochs": local_epochs,
-        "status": "pending", "current_round": 0, "round_results": [], "cancelled": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "nodes": nodes_config,
-        "upload_filename": file.filename if file else None,
-    }
+    if store:
+        node_ids = [n.get("node_id", str(n)) if isinstance(n, dict) else str(n)
+                    for n in nodes_config]
+        store.create(
+            user_id=str(user.id), user_email=getattr(user, "email", ""),
+            name=study_name, model=architecture, dataset=dataset,
+            num_rounds=num_rounds, nodes=node_ids,
+        )
+        # Also keep in jobs dict for training thread compatibility
+        jobs[study_id] = {
+            "study_id": study_id, "study_name": study_name,
+            "researcher_name": researcher_name, "institution": institution,
+            "dataset": dataset, "architecture": architecture,
+            "num_rounds": num_rounds, "local_epochs": local_epochs,
+            "status": "pending", "current_round": 0, "round_results": [], "cancelled": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "nodes": nodes_config, "upload_filename": file.filename if file else None,
+        }
+    else:
+        jobs[study_id] = {
+            "study_id": study_id, "study_name": study_name,
+            "researcher_name": researcher_name, "institution": institution,
+            "dataset": dataset, "architecture": architecture,
+            "num_rounds": num_rounds, "local_epochs": local_epochs,
+            "status": "pending", "current_round": 0, "round_results": [], "cancelled": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "nodes": nodes_config, "upload_filename": file.filename if file else None,
+        }
 
     t = threading.Thread(
         target=train_thread,
@@ -498,17 +548,52 @@ async def create_study(
         daemon=True
     )
     t.start()
-    logger.info(f"[{study_id[:8]}] Study created — {arch if (arch:=architecture) else architecture}")
+    logger.info(f"[{study_id[:8]}] Study created — {architecture}")
     return {"study_id": study_id, "status": "pending"}
 
+
 @app.get("/studies")
-def list_studies():
+def list_studies(authorization: Optional[str] = Header(None)):
+    user = _require_user(authorization)
+    if store:
+        try:
+            return store.list_for_user(str(user.id))
+        except Exception as e:
+            logger.warning(f"Supabase list failed: {e}")
     return list(jobs.values())
 
+
 @app.get("/studies/{study_id}")
-def get_study(study_id: str):
+def get_study(study_id: str, authorization: Optional[str] = Header(None)):
+    user = _require_user(authorization)
+    if store:
+        try:
+            study = store.get(study_id)
+            if not study: raise HTTPException(404, "Not found")
+            rounds = store.get_rounds(study_id)
+            return {**study, "rounds": rounds,
+                    # merge in-memory fields for active training
+                    **(jobs.get(study_id, {}))}
+        except HTTPException: raise
+        except Exception as e:
+            logger.warning(f"Supabase get failed: {e}")
     if study_id not in jobs: raise HTTPException(404, "Not found")
     return jobs[study_id]
+
+
+@app.post("/studies/{study_id}/cancel")
+def cancel_study(study_id: str, authorization: Optional[str] = Header(None)):
+    user = _require_user(authorization)
+    stop_events[study_id] = True
+    if store:
+        try: store.set_stopped(study_id)
+        except: pass
+    if study_id in jobs:
+        jobs[study_id]["cancelled"] = True
+        jobs[study_id]["status"] = "cancelling"
+    audit(study_id, "cancel_requested", {"requested_at": datetime.now(timezone.utc).isoformat()})
+    return {"status": "cancelling", "message": "Training will stop after current batch"}
+
 
 @app.get("/studies/{study_id}/audit")
 def get_audit(study_id: str):
@@ -521,40 +606,202 @@ def get_audit(study_id: str):
             except: pass
     return {"study_id": study_id, "events": events}
 
+
 @app.get("/studies/{study_id}/download")
 def download_model(study_id: str):
-    if study_id not in jobs: raise HTTPException(404, "Not found")
-    j = jobs[study_id]
-    if j.get("status") != "completed": raise HTTPException(400, "Training not complete")
-    mp = j.get("model_path")
+    # Check in-memory first, then Supabase
+    job = jobs.get(study_id)
+    if not job and store:
+        job = store.get(study_id)
+    if not job: raise HTTPException(404, "Not found")
+
+    status = job.get("status")
+    if status != "completed": raise HTTPException(400, "Training not complete")
+
+    mp = job.get("model_path") or job.get("model_download_path")
     if not mp or not Path(mp).exists(): raise HTTPException(404, "Model file not found")
     from fastapi.responses import FileResponse
+    arch = job.get("architecture") or job.get("model", "model")
     return FileResponse(mp, media_type="application/octet-stream",
-                        filename=f"undosatech_{j['architecture']}_{study_id[:8]}.pt")
+                        filename=f"undosatech_{arch}_{study_id[:8]}.pt")
+
+
+# ── Datasets ──────────────────────────────────────────────────────────────────
 
 @app.get("/datasets")
 def list_datasets():
     return {
         "builtin": [
-            {"id":"octmnist",      "name":"OCTMNIST",       "description":"Retinal OCT imaging","classes":4, "modality":"OCT"},
-            {"id":"pathmnist",     "name":"PathMNIST",      "description":"Colon pathology histology","classes":9,"modality":"Histology"},
-            {"id":"chestmnist",    "name":"ChestMNIST",     "description":"Chest X-ray multi-label","classes":14,"modality":"X-Ray"},
-            {"id":"dermamnist",    "name":"DermaMNIST",     "description":"Dermatoscopy skin lesions","classes":7,"modality":"Dermatoscopy"},
-            {"id":"breastmnist",   "name":"BreastMNIST",    "description":"Breast ultrasound","classes":2,"modality":"Ultrasound"},
-            {"id":"bloodmnist",    "name":"BloodMNIST",     "description":"Blood cell microscopy","classes":8,"modality":"Microscopy"},
-            {"id":"tissuemnist",   "name":"TissueMNIST",    "description":"Kidney cortex tissue","classes":8,"modality":"Microscopy"},
-            {"id":"retinamnist",   "name":"RetinaMNIST",    "description":"Retinal fundus grading","classes":5,"modality":"Fundus"},
-            {"id":"pneumoniamnist","name":"PneumoniaMNIST", "description":"Chest X-ray pneumonia","classes":2,"modality":"X-Ray"},
-            {"id":"organamnist",   "name":"OrganAMNIST",    "description":"Abdominal CT organ segmentation","classes":11,"modality":"CT"},
+            {"id":"octmnist",      "name":"OCTMNIST",        "description":"Retinal OCT imaging","classes":4,  "modality":"OCT"},
+            {"id":"pathmnist",     "name":"PathMNIST",       "description":"Colon pathology histology","classes":9,"modality":"Histology"},
+            {"id":"chestmnist",    "name":"ChestMNIST",      "description":"Chest X-ray multi-label","classes":14,"modality":"X-Ray"},
+            {"id":"dermamnist",    "name":"DermaMNIST",      "description":"Dermatoscopy skin lesions","classes":7,"modality":"Dermatoscopy"},
+            {"id":"breastmnist",   "name":"BreastMNIST",     "description":"Breast ultrasound","classes":2,"modality":"Ultrasound"},
+            {"id":"bloodmnist",    "name":"BloodMNIST",      "description":"Blood cell microscopy","classes":8,"modality":"Microscopy"},
+            {"id":"tissuemnist",   "name":"TissueMNIST",     "description":"Kidney cortex tissue","classes":8,"modality":"Microscopy"},
+            {"id":"retinamnist",   "name":"RetinaMNIST",     "description":"Retinal fundus grading","classes":5,"modality":"Fundus"},
+            {"id":"pneumoniamnist","name":"PneumoniaMNIST",  "description":"Chest X-ray pneumonia","classes":2,"modality":"X-Ray"},
+            {"id":"organamnist",   "name":"OrganAMNIST",     "description":"Abdominal CT organ","classes":11,"modality":"CT"},
         ],
         "upload_formats": ["NPZ","CSV","ZIP (image folders)","DICOM","JPG","PNG"],
         "architectures": [
-            {"id":"resnet18",       "name":"ResNet-18",        "params":"11M",  "speed":"Fast",   "best_for":"General medical imaging"},
-            {"id":"resnet50",       "name":"ResNet-50",        "params":"25M",  "speed":"Medium", "best_for":"Complex pathology"},
-            {"id":"resnet101",      "name":"ResNet-101",       "params":"44M",  "speed":"Slow",   "best_for":"High-res histology"},
-            {"id":"efficientnet_b0","name":"EfficientNet-B0",  "params":"5M",   "speed":"Fast",   "best_for":"Resource-constrained nodes"},
-            {"id":"efficientnet_b4","name":"EfficientNet-B4",  "params":"19M",  "speed":"Medium", "best_for":"High accuracy imaging"},
-            {"id":"vit_b16",        "name":"ViT-B/16",         "params":"86M",  "speed":"Slow",   "best_for":"Large-scale research"},
-            {"id":"cnn",            "name":"Lightweight CNN",  "params":"0.5M", "speed":"Fastest","best_for":"Quick experiments"},
+            {"id":"resnet18",        "name":"ResNet-18",       "params":"11M",  "speed":"Fast",    "best_for":"General medical imaging"},
+            {"id":"resnet50",        "name":"ResNet-50",       "params":"25M",  "speed":"Medium",  "best_for":"Complex pathology"},
+            {"id":"resnet101",       "name":"ResNet-101",      "params":"44M",  "speed":"Slow",    "best_for":"High-res histology"},
+            {"id":"efficientnet_b0", "name":"EfficientNet-B0", "params":"5M",   "speed":"Fast",    "best_for":"Resource-constrained nodes"},
+            {"id":"efficientnet_b4", "name":"EfficientNet-B4", "params":"19M",  "speed":"Medium",  "best_for":"High accuracy imaging"},
+            {"id":"vit_b16",         "name":"ViT-B/16",        "params":"86M",  "speed":"Slow",    "best_for":"Large-scale research"},
+            {"id":"cnn",             "name":"Lightweight CNN", "params":"0.5M", "speed":"Fastest", "best_for":"Quick experiments"},
         ]
     }
+
+
+# ════════════════════════════════════════════════════════════════
+# NODE REGISTRY ENDPOINTS
+# ════════════════════════════════════════════════════════════════
+
+def _hash_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+def _verify_node_api_key(node_id: str, api_key: str) -> bool:
+    if not supabase_admin: return True
+    try:
+        result = (supabase_admin.table("fl_nodes")
+                  .select("api_key_hash").eq("node_id", node_id).single().execute())
+        stored_hash = result.data.get("api_key_hash", "")
+        return hmac.compare_digest(stored_hash, _hash_key(api_key))
+    except Exception:
+        return False
+
+def _node_connectivity(last_heartbeat_iso):
+    if not last_heartbeat_iso: return "unreachable"
+    try:
+        ts = datetime.fromisoformat(last_heartbeat_iso.replace("Z", "+00:00"))
+        age = datetime.now(timezone.utc) - ts
+        if age < timedelta(minutes=2): return "online"
+        if age < timedelta(minutes=10): return "degraded"
+        return "unreachable"
+    except Exception:
+        return "unreachable"
+
+def _mark_stale_nodes_offline():
+    if not supabase_admin: return
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        supabase_admin.table("fl_nodes").update({"status": "offline"}).eq(
+            "status", "active").lt("last_heartbeat", cutoff).execute()
+    except Exception as e:
+        logger.warning(f"[node-monitor] {e}")
+
+def _node_monitor_loop():
+    _mark_stale_nodes_offline()
+    t = threading.Timer(120, _node_monitor_loop)
+    t.daemon = True
+    t.start()
+
+
+class NodeRegistrationRequest(BaseModel):
+    node_id: str
+    institution_name: str
+    institution_domain: str
+    contact_email: str
+    host: str
+    port: int = 8080
+    gpu_available: bool = False
+    max_samples: Optional[int] = None
+    supported_models: List[str] = []
+    tags: List[str] = []
+    registration_secret: str
+
+class NodeHeartbeatRequest(BaseModel):
+    node_id: str
+    api_key: str
+    training_active: bool = False
+    current_study_id: Optional[str] = None
+    latency_ms: Optional[int] = None
+
+
+@app.post("/nodes/register")
+async def register_node(req: NodeRegistrationRequest):
+    if not supabase_admin:
+        raise HTTPException(503, "Node registry requires Supabase — check SUPABASE_SERVICE_KEY")
+    if not hmac.compare_digest(req.registration_secret, NODE_REGISTRATION_SECRET):
+        raise HTTPException(403, "Invalid registration secret")
+
+    existing = supabase_admin.table("fl_nodes").select("node_id,status").eq("node_id", req.node_id).execute()
+    if existing.data:
+        if existing.data[0]["status"] == "suspended":
+            raise HTTPException(403, "Node has been suspended")
+        raise HTTPException(409, f"node_id '{req.node_id}' already registered")
+
+    domain = req.institution_domain.lower()
+    auto_approved = any(domain.endswith(s) for s in [".nhs.uk",".ac.uk",".edu",".gov.uk",".edu.au",".ac.nz"])
+    initial_status = "active" if auto_approved else "pending"
+
+    api_key = secrets.token_urlsafe(48)
+    supabase_admin.table("fl_nodes").insert({
+        "node_id": req.node_id, "institution_name": req.institution_name,
+        "institution_domain": req.institution_domain, "contact_email": req.contact_email,
+        "host": req.host, "port": req.port, "api_key_hash": _hash_key(api_key),
+        "gpu_available": req.gpu_available, "max_samples": req.max_samples,
+        "supported_models": req.supported_models, "tags": req.tags,
+        "status": initial_status,
+        "approved_at": datetime.now(timezone.utc).isoformat() if auto_approved else None,
+    }).execute()
+
+    return {"node_id": req.node_id, "api_key": api_key, "status": initial_status,
+            "message": f"Registered. {'Auto-approved.' if auto_approved else 'Awaiting admin approval.'}"}
+
+
+@app.post("/nodes/heartbeat")
+async def node_heartbeat(req: NodeHeartbeatRequest):
+    if not supabase_admin: return {"status": "ok", "storage": "none"}
+    if not _verify_node_api_key(req.node_id, req.api_key):
+        raise HTTPException(401, "Invalid node_id or api_key")
+    now = datetime.now(timezone.utc).isoformat()
+    supabase_admin.table("fl_nodes").update({"last_heartbeat": now, "status": "active"}).eq("node_id", req.node_id).execute()
+    supabase_admin.table("fl_node_heartbeats").insert({
+        "node_id": req.node_id, "latency_ms": req.latency_ms,
+        "training_active": req.training_active, "current_study_id": req.current_study_id,
+    }).execute()
+    return {"status": "ok", "server_time": now}
+
+
+@app.get("/nodes/list")
+async def list_nodes(
+    status: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    user = _require_user(authorization)
+    if not supabase_admin:
+        return []
+
+    query = supabase_admin.table("fl_nodes").select(
+        "node_id,institution_name,institution_domain,status,gpu_available,"
+        "max_samples,supported_models,tags,last_heartbeat,registered_at"
+    )
+    if status:
+        query = query.eq("status", status)
+    else:
+        query = query.in_("status", ["active","offline","pending"])
+    if tag:
+        query = query.contains("tags", [tag])
+
+    result = query.order("registered_at", desc=False).execute()
+    return [
+        {**row, "connectivity": _node_connectivity(row.get("last_heartbeat"))}
+        for row in (result.data or [])
+    ]
+
+
+@app.post("/nodes/{node_id}/deregister")
+async def deregister_node(node_id: str, body: dict = Body(...)):
+    if not supabase_admin: return {"status": "ok"}
+    api_key = body.get("api_key")
+    if api_key:
+        if not _verify_node_api_key(node_id, api_key):
+            raise HTTPException(401, "Invalid credentials")
+        supabase_admin.table("fl_nodes").update({"status": "offline"}).eq("node_id", node_id).execute()
+        return {"status": "ok", "message": f"Node {node_id} marked offline"}
+    raise HTTPException(400, "Provide api_key")
