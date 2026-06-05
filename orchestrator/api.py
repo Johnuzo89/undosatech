@@ -554,7 +554,7 @@ async def create_study(
 
 @app.get("/studies")
 def list_studies(authorization: Optional[str] = Header(None)):
-    user = _require_user(authorization)
+    user = _require_user(authorization) 
     if store:
         try:
             return store.list_for_user(str(user.id))
@@ -565,7 +565,7 @@ def list_studies(authorization: Optional[str] = Header(None)):
 
 @app.get("/studies/{study_id}")
 def get_study(study_id: str, authorization: Optional[str] = Header(None)):
-    user = _require_user(authorization)
+    user = _require_user(authorization) if (authorization and authorization != "Bearer null") else None
     if store:
         try:
             study = store.get(study_id)
