@@ -298,7 +298,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             node_loaders.append((tl, vl))
             if i == 0:
                 update_job(data_description=desc, num_classes=num_classes,
-                           architecture=arch, class_names=class_names)
+                           class_names=class_names)
                 log(f"Dataset: {desc}")
 
         audit(study_id, "study_started", {"dataset": dataset_name, "arch": arch, "nodes": node_names})
