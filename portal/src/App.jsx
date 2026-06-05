@@ -282,7 +282,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         : defaultNodes
       fd.append('nodes', JSON.stringify(nodes))
       if(file)fd.append('file',file)
-      const r=await apiFetch('/studies',{method:'POST',body:fd,headers:{}},session?.access_token)
+      const r=await fetch(`${API}/studies`,{method:'POST',body:fd,headers:{Authorization:`Bearer ${session?.access_token}`}}).then(async res=>{if(!res.ok){throw new Error(await res.text())}return res.json()})
       onLaunched(r.study_id)
     }catch(e){setErr(e.message)}finally{setBusy(false)}
   }
