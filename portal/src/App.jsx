@@ -255,7 +255,7 @@ function AuthScreen({ onAuth }) {
 
 // ── LAUNCH FORM ───────────────────────────────────────────────────────────────
 
-function LaunchForm({ onLaunched, user, preselectedNodes = [] }) {
+function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const [file,setFile]=useState(null); const [drag,setDrag]=useState(false)
   const [busy,setBusy]=useState(false); const [err,setErr]=useState(null)
   const [preset,setPreset]=useState('standard')
@@ -282,7 +282,7 @@ function LaunchForm({ onLaunched, user, preselectedNodes = [] }) {
         : defaultNodes
       fd.append('nodes', JSON.stringify(nodes))
       if(file)fd.append('file',file)
-      const r=await apiFetch('/studies',{method:'POST',body:fd})
+      const r=await apiFetch('/studies',{method:'POST',body:fd,headers:{}},session?.access_token)
       onLaunched(r.study_id)
     }catch(e){setErr(e.message)}finally{setBusy(false)}
   }
@@ -626,7 +626,7 @@ export default function App() {
       </div>
     </header>
     <div style={{maxWidth:820,width:'100%',margin:'0 auto',padding:'32px 20px'}}>
-      {tab==='launch'&&!selected&&<LaunchForm onLaunched={id=>{setSelected(id);setTab('studies');refresh()}} user={user} preselectedNodes={selectedNodes}/>}
+      {tab==='launch'&&!selected&&<LaunchForm onLaunched={id=>{setSelected(id);setTab('studies');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
       {tab==='nodes'&&(
         <NodeRegistry
           session={session}
