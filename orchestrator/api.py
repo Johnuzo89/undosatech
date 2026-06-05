@@ -32,7 +32,7 @@ if SUPABASE_SERVICE_KEY:
     try:
         from supabase import create_client
         supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        from study_store import StudyStore
+        from orchestrator.study_store import StudyStore
         store = StudyStore()
         logger.info("Supabase connected ✓")
     except Exception as e:
