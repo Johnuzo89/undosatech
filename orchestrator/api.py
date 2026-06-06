@@ -556,8 +556,7 @@ async def create_study(
 
     t = threading.Thread(
         target=train_thread,
-        args=(study_id, upload_path, dataset, num_rounds, local_epochs, architecture, nodes_config),
-        kwargs={"dp_noise_multiplier": dp_noise_multiplier},
+        args=(study_id, upload_path, dataset, num_rounds, local_epochs, architecture, nodes_config), dp_noise_multiplier),
         daemon=True
     )
     t.start()
