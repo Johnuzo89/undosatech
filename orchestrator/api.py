@@ -314,7 +314,10 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
         node_models = [build_model(num_classes, in_ch, arch).to(device) for _ in range(num_nodes)]
         node_optims = [optim.Adam(m.parameters(), lr=0.001, weight_decay=1e-4) for m in node_models]
         schedulers  = [optim.lr_scheduler.CosineAnnealingLR(o, T_max=num_rounds) for o in node_optims]
-        criterion   = nn.CrossEntropyLoss()
+        # ChestMNIST is multi-label - needs BCE loss
+        multilabel_datasets = ['chestmnist']
+        is_multilabel = dataset_name.lower() in multilabel_datasets
+        criterion = nn.BCEWithLogitsLoss() if is_multilabel else nn.CrossEntropyLoss()
         round_results = []
 
         for rnd in range(1, num_rounds+1):
@@ -348,7 +351,12 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                         except Exception as e:
                             logger.warning(f"Forward pass error: {e}")
                             continue
-                        loss = criterion(out, y.long())
+                        if is_multilabel:
+                            y_f = y.float() if y.dtype != torch.float32 else y
+                            if y_f.dim() == 1: y_f = y_f.unsqueeze(1)
+                            loss = criterion(out, y_f)
+                        else:
+                            loss = criterion(out, y.long())
                         loss.backward(); opt.step()
                         tot_loss += loss.item()*X.size(0)
                         correct  += out.argmax(1).eq(y).sum().item()
@@ -380,8 +388,14 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                     if y.dim()>1: y=y.squeeze(1)
                     try:
                         out=node_models[0](X)
-                        gl+=criterion(out,y.long()).item()*X.size(0)
-                        gc+=out.argmax(1).eq(y).sum().item(); gt+=X.size(0)
+                        if is_multilabel:
+                            y_f = y.float() if y.dtype != torch.float32 else y
+                            if y_f.dim()==1: y_f=y_f.unsqueeze(1)
+                            gl+=criterion(out,y_f).item()*X.size(0)
+                            gc+=((out.sigmoid()>0.5).float()==y_f).all(1).sum().item(); gt+=X.size(0)
+                        else:
+                            gl+=criterion(out,y.long()).item()*X.size(0)
+                            gc+=out.argmax(1).eq(y).sum().item(); gt+=X.size(0)
                     except: pass
 
             g_acc  = round(gc/max(gt,1), 4)
