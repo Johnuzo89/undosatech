@@ -583,9 +583,7 @@ def get_study(study_id: str, authorization: Optional[str] = Header(None)):
             study = store.get(study_id)
             if not study: raise HTTPException(404, "Not found")
             rounds = store.get_rounds(study_id)
-            return {**study, "rounds": rounds,
-                    # merge in-memory fields for active training
-                    **(jobs.get(study_id, {}))}
+            return {**(jobs.get(study_id, {})), **study, "rounds": rounds}
         except HTTPException: raise
         except Exception as e:
             logger.warning(f"Supabase get failed: {e}")
