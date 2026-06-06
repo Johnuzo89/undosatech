@@ -500,7 +500,7 @@ function StudyView({ studyId, onBack, session }) {
           })():<div style={{color:'#9ca3af',fontSize:13}}>Available after round 1.</div>}
         </div>}
         {tab==='nodes'&&<div>
-          {lastRound?.node_metrics?.map(n=><div key={n.node_id} style={{...S.card,display:'flex',alignItems:'center',gap:14}}>
+          {(Array.isArray(lastRound?.node_metrics) ? lastRound.node_metrics : Object.values(lastRound?.node_metrics||{})).map(n=><div key={n.node_id} style={{...S.card,display:'flex',alignItems:'center',gap:14}}>
             <div style={{width:42,height:42,borderRadius:'50%',background:'#eff6ff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>🏥</div>
             <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{n.institution}</div><div style={{fontSize:12,color:'#9ca3af'}}>{n.num_examples} samples · lr {n.learning_rate}</div></div>
             <div style={{textAlign:'right'}}><div style={{fontWeight:700,color:'#1d4ed8',fontSize:17}}>{(n.accuracy*100).toFixed(1)}%</div><div style={{fontSize:11,color:'#9ca3af'}}>local acc</div></div>
