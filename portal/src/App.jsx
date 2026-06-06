@@ -399,7 +399,7 @@ function StudyView({ studyId, onBack, session }) {
         if((data.status==='cancelled'||data.status==='stopped')&&prev.status!==data.status)addLog(`🛑 Training stopped by user`,'error')
         if(data.status==='failed'&&prev.status!=='failed')addLog(`❌ Failed: ${data.error||data.error_message}`,'error')
         prev.status=data.status
-      }catch(e){addLog(`⚠ Poll error: ${e.message}`,'error')}
+      }catch(e){if(!e.message.includes('Token validation'))addLog(`⚠ Poll error: ${e.message}`,'error')}
     }
     if(!session?.access_token){setTimeout(poll,1000);return};poll();const id=setInterval(()=>{if(['completed','cancelled','failed','stopped'].includes(job?.status)){if(!job?.rounds?.length)poll();return};poll()},2000);return()=>clearInterval(id)
   },[studyId])
@@ -434,6 +434,7 @@ function StudyView({ studyId, onBack, session }) {
               {(job.architecture||job.model)&&<span style={{background:'#eff6ff',color:'#1e40af',border:'1px solid #bfdbfe',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{archInfo.name||job.architecture||job.model}</span>}
               {job.dataset&&<span style={{background:'#f5f3ff',color:'#5b21b6',border:'1px solid #ddd6fe',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{job.dataset}</span>}
               {archInfo.params&&<span style={{background:'#f9fafb',color:'#6b7280',border:'1px solid #e5e7eb',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{archInfo.params} params</span>}
+              {job.dp_enabled&&<span style={{background:'#fef3c7',color:'#92400e',border:'1px solid #fde68a',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>🔒 DP enabled</span>}
             </div>
           </div>
           <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>

@@ -344,7 +344,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                     for b_idx, batch in enumerate(tl):
                         if stop_events.get(study_id): break
                         X, y = batch[0].to(device), batch[1].to(device)
-                        if y.dim()>1: y=y.squeeze(1)
+                        if y.dim()>1: y=y.squeeze(1) if y.shape[1]==1 else y.argmax(1)
                         opt.zero_grad()
                         try:
                             out = model(X)
@@ -409,7 +409,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             with torch.no_grad():
                 for batch in vl_eval:
                     X,y=batch[0].to(device),batch[1].to(device)
-                    if y.dim()>1: y=y.squeeze(1)
+                    if y.dim()>1: y=y.squeeze(1) if y.shape[1]==1 else y.argmax(1)
                     try:
                         out=node_models[0](X); preds=out.argmax(1)
                         for c in range(num_classes):
@@ -473,6 +473,12 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 final_accuracy=final_acc, final_loss=final_loss,
                 per_class_accuracy=per_class_dict,
                 model_download_path=str(fp))
+            try:
+                store.update(study_id,
+                    interpretability=json.dumps(interp),
+                    class_names=json.dumps(class_names))
+            except Exception:
+                pass
         else:
             jobs[study_id].update({
                 "status": "completed",
