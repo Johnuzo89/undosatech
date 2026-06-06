@@ -6,7 +6,8 @@ import MyStudies from './components/MyStudies'
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  { auth: { autoRefreshToken: true, persistSession: true } }
 )
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -379,7 +380,7 @@ function StudyView({ studyId, onBack, session }) {
     let prev={status:null,round:0,liveStatus:null}
     const poll=async()=>{
       try{
-        const token=session?.access_token||null;const data=await apiFetch(`/studies/${studyId}`,{},token)
+        const {data:{session:freshSession}}=await supabase.auth.getSession();const token=freshSession?.access_token||null;const data=await apiFetch(`/studies/${studyId}`,{},token)
         setJob(data)
         if(prev.status===null){addLog(`✅ Connected — ${data.study_name||data.name}`,'success');addLog(`   Dataset: ${data.dataset}  ·  Architecture: ${data.architecture||data.model}  ·  ${data.num_rounds||data.total_rounds} rounds`);if(data.data_description)addLog(`   Data: ${data.data_description}`)}
         if(data.live_status&&data.status==='running'&&data.live_status!==prev.liveStatus){addLog(`   ⏳ ${data.live_status}`,'info');prev.liveStatus=data.live_status}
