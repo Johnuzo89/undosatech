@@ -352,8 +352,9 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                             logger.warning(f"Forward pass error: {e}")
                             continue
                         if is_multilabel:
-                            y_f = y.float() if y.dtype != torch.float32 else y
-                            if y_f.dim() == 1: y_f = y_f.unsqueeze(1)
+                            y_f = y.float().squeeze()
+                            if y_f.dim() == 1: y_f = y_f.unsqueeze(0)
+                            if y_f.shape[-1] != out.shape[-1]: y_f = y_f.view(out.shape[0], -1)
                             loss = criterion(out, y_f)
                         else:
                             loss = criterion(out, y.long())
@@ -389,8 +390,9 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                     try:
                         out=node_models[0](X)
                         if is_multilabel:
-                            y_f = y.float() if y.dtype != torch.float32 else y
-                            if y_f.dim()==1: y_f=y_f.unsqueeze(1)
+                            y_f = y.float().squeeze()
+                            if y_f.dim()==1: y_f=y_f.unsqueeze(0)
+                            if y_f.shape[-1] != out.shape[-1]: y_f=y_f.view(out.shape[0],-1)
                             gl+=criterion(out,y_f).item()*X.size(0)
                             gc+=((out.sigmoid()>0.5).float()==y_f).all(1).sum().item(); gt+=X.size(0)
                         else:
