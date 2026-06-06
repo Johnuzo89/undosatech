@@ -258,8 +258,18 @@ def build_model(num_classes, in_channels, arch="resnet18"):
     )
 
 
+
+def _add_dp_noise(model, noise_multiplier: float, max_grad_norm: float = 1.0):
+    """Gaussian mechanism DP: clip weights then add calibrated noise before FedAvg."""
+    import torch
+    with torch.no_grad():
+        for param in model.parameters():
+            clip_coef = min(1.0, max_grad_norm / (param.data.norm(2) + 1e-6))
+            param.data.mul_(clip_coef)
+            param.data.add_(torch.randn_like(param.data) * noise_multiplier * max_grad_norm)
+
 # ── Training thread ───────────────────────────────────────────────────────────
-def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, arch, nodes_config):
+def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, arch, nodes_config, dp_noise_multiplier=None):
     import torch, torch.nn as nn, torch.optim as optim
 
     logger.info(f"[{study_id[:8]}] Thread started — {arch} on {dataset_name}")
@@ -495,6 +505,7 @@ async def create_study(
     num_rounds:      int = Form(5),
     local_epochs:    int = Form(2),
     nodes:           str = Form("[]"),
+    dp_noise_multiplier: Optional[float] = Form(None),
     file: Optional[UploadFile] = File(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -519,6 +530,8 @@ async def create_study(
             user_id=str(user.id), user_email=getattr(user, "email", ""),
             name=study_name, model=architecture, dataset=dataset,
             num_rounds=num_rounds, nodes=node_ids,
+            dp_enabled=dp_noise_multiplier is not None,
+            dp_noise_multiplier=dp_noise_multiplier,
         )
         # Also keep in jobs dict for training thread compatibility
         jobs[study_id] = {
@@ -544,6 +557,7 @@ async def create_study(
     t = threading.Thread(
         target=train_thread,
         args=(study_id, upload_path, dataset, num_rounds, local_epochs, architecture, nodes_config),
+        kwargs={"dp_noise_multiplier": dp_noise_multiplier},
         daemon=True
     )
     t.start()
