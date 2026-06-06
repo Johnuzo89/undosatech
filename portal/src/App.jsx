@@ -389,7 +389,7 @@ function StudyView({ studyId, onBack, session }) {
           for(let i=prev.round;i<rounds.length;i++){
             const r=rounds[i]
             addLog(`⚡ Round ${r.round||r.round_number}/${data.num_rounds||data.total_rounds} — aggregating…`)
-            r.node_metrics?.forEach(n=>{addLog(`   🏥 ${n.institution||n.node_id}`,'node');addLog(`      acc ${(n.accuracy*100).toFixed(1)}%  ·  loss ${n.loss?.toFixed(4)}  ·  ${n.num_examples||0} samples`,'node')})
+            (Array.isArray(r.node_metrics) ? r.node_metrics : Object.values(r.node_metrics||{})).forEach(n=>{addLog(`   🏥 ${n.institution||n.node_id}`,'node');addLog(`      acc ${(n.accuracy*100).toFixed(1)}%  ·  loss ${n.loss?.toFixed(4)}  ·  ${n.num_examples||0} samples`,'node')})
             addLog(`✓ Round complete — global acc ${((r.global_accuracy||r.accuracy||0)*100).toFixed(1)}%`,'success')
           }
           prev.round=rounds.length
