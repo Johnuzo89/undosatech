@@ -400,7 +400,7 @@ function StudyView({ studyId, onBack, session }) {
         prev.status=data.status
       }catch(e){addLog(`⚠ Poll error: ${e.message}`,'error')}
     }
-    if(!session?.access_token){setTimeout(poll,1000);return};poll();const id=setInterval(()=>{if(['completed','cancelled','failed','stopped'].includes(job?.status))return;poll()},2000);return()=>clearInterval(id)
+    if(!session?.access_token){setTimeout(poll,1000);return};poll();const id=setInterval(()=>{if(['completed','cancelled','failed','stopped'].includes(job?.status)){if(!job?.rounds?.length)poll();return};poll()},2000);return()=>clearInterval(id)
   },[studyId])
   const rounds = job?.round_results||job?.rounds||[]
   const safeNodes = Array.isArray(job?.nodes) ? job.nodes : []
