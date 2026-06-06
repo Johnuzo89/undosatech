@@ -363,8 +363,8 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                         correct  += out.argmax(1).eq(y).sum().item()
                         total    += X.size(0)
                         if b_idx % 10 == 0:
-                            pct = int((b_idx+1)/max(len(tl),1)*100)
-                            acc_so_far = round(correct/max(total,1)*100,1)
-                            live_msg = f"R{rnd} · Node {i+1}/{num_nodes} · Batch {b_idx+1}/{len(tl)} ({pct}%) · acc {acc_so_far}%"
-                            logger.info(f"[{study_id[:8]}] {live_msg}")
-                            if store: store.update(study_id, live_status=live_msg)
+                            _pct = int((b_idx+1)*100//max(len(tl),1))
+                            _acc = round(correct*100//max(total,1), 1)
+                            _msg = "R%d Node %d/%d Batch %d/%d (%d%%) acc %s%%" % (rnd,i+1,num_nodes,b_idx+1,len(tl),_pct,_acc)
+                            logger.info("[%s] %s" % (study_id[:8], _msg))
+                            if store: store.update(study_id, live_status=_msg)
