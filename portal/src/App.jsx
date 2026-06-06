@@ -262,7 +262,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const [form,setForm]=useState({
     study_name:'', researcher_name: user?.user_metadata?.full_name || '',
     institution: user?.user_metadata?.institution || '',
-    dataset:'octmnist', architecture:'resnet18', num_rounds:5, local_epochs:2
+    dataset:'octmnist', architecture:'resnet18', num_rounds:5, local_epochs:2, dp_enabled:false, dp_epsilon:1.0
   })
   const ref=useRef(); const set=(k,v)=>setForm(f=>({...f,[k]:v}))
   const applyPreset=(p)=>{setPreset(p);const f=PRESETS.find(x=>x.v===p);if(f&&f.rounds){set('num_rounds',f.rounds);set('local_epochs',f.epochs)}}
@@ -282,6 +282,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         : defaultNodes
       fd.append('nodes', JSON.stringify(nodes))
       if(file)fd.append('file',file)
+      if(form.dp_enabled){fd.append('dp_noise_multiplier', (1.0/form.dp_epsilon).toFixed(4))}
       const r=await fetch(`${API}/studies`,{method:'POST',body:fd,headers:{Authorization:`Bearer ${session?.access_token}`}}).then(async res=>{if(!res.ok){throw new Error(await res.text())}return res.json()})
       onLaunched(r.study_id)
     }catch(e){setErr(e.message)}finally{setBusy(false)}
@@ -378,7 +379,7 @@ function StudyView({ studyId, onBack, session }) {
     let prev={status:null,round:0,liveStatus:null}
     const poll=async()=>{
       try{
-        const data=await apiFetch(`/studies/${studyId}`,{},session?.access_token)
+        const token=session?.access_token||null;const data=await apiFetch(`/studies/${studyId}`,{},token)
         setJob(data)
         if(prev.status===null){addLog(`✅ Connected — ${data.study_name||data.name}`,'success');addLog(`   Dataset: ${data.dataset}  ·  Architecture: ${data.architecture||data.model}  ·  ${data.num_rounds||data.total_rounds} rounds`);if(data.data_description)addLog(`   Data: ${data.data_description}`)}
         if(data.live_status&&data.status==='running'&&data.live_status!==prev.liveStatus){addLog(`   ⏳ ${data.live_status}`,'info');prev.liveStatus=data.live_status}
@@ -399,7 +400,7 @@ function StudyView({ studyId, onBack, session }) {
         prev.status=data.status
       }catch(e){addLog(`⚠ Poll error: ${e.message}`,'error')}
     }
-    poll();const id=setInterval(()=>{if(['completed','cancelled','failed','stopped'].includes(job?.status))return;poll()},2000);return()=>clearInterval(id)
+    if(!session?.access_token){setTimeout(poll,1000);return};poll();const id=setInterval(()=>{if(['completed','cancelled','failed','stopped'].includes(job?.status))return;poll()},2000);return()=>clearInterval(id)
   },[studyId])
   const rounds = job?.round_results||job?.rounds||[]
   const chart=rounds.map(r=>({round:`R${r.round||r.round_number}`,acc:+((r.global_accuracy||r.accuracy||0)*100).toFixed(2),loss:+(r.global_loss||r.loss||0).toFixed(4)}))
@@ -641,7 +642,7 @@ export default function App() {
         </div>
         <StudiesList studies={studies} onSelect={id=>setSelected(id)}/>
       </>}
-      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)}/>}
+      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)} session={session}/>}
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f9fafb;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased} input,select,button,textarea{font-family:inherit} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}`}</style>
   </div>
