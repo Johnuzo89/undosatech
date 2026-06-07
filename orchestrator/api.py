@@ -853,4 +853,60 @@ async def deregister_node(node_id: str, body: dict = Body(...)):
             raise HTTPException(401, "Invalid credentials")
         supabase_admin.table("fl_nodes").update({"status": "offline"}).eq("node_id", node_id).execute()
         return {"status": "ok", "message": f"Node {node_id} marked offline"}
-    raise HTTPException(400, "Provide api_key")
+    raise HTTPException(400, "Provide api_key")# ============================================================
+# APPEND THESE 4 ENDPOINTS TO THE BOTTOM OF orchestrator/api.py
+# ============================================================
+
+@app.get("/studies/{study_id}/logs")
+def get_study_logs(study_id: str, since_id: Optional[int] = Query(None), authorization: Optional[str] = Header(None)):
+    _require_user(authorization) if (authorization and authorization != "Bearer null") else None
+    if store:
+        try:
+            raw = store.get_logs(study_id, since_id=since_id)
+            for row in raw:
+                row.setdefault("timestamp", row.get("logged_at"))
+            last_id = raw[-1]["id"] if raw else since_id
+            return {"logs": raw, "last_id": last_id}
+        except Exception as e:
+            logger.warning(f"get_study_logs failed: {e}")
+    job = jobs.get(study_id)
+    if not job:
+        raise HTTPException(404, "Study not found")
+    raw_logs = job.get("logs", [])
+    structured = [
+        {"id": i, "message": m if isinstance(m, str) else str(m),
+         "level": "info", "round_number": None,
+         "logged_at": datetime.now(timezone.utc).isoformat(),
+         "timestamp": datetime.now(timezone.utc).isoformat()}
+        for i, m in enumerate(raw_logs)
+    ]
+    if since_id is not None:
+        structured = [l for l in structured if l["id"] > since_id]
+    last_id = structured[-1]["id"] if structured else since_id
+    return {"logs": structured, "last_id": last_id}
+
+
+@app.get("/studies/{study_id}/status")
+def get_study_status(study_id: str, authorization: Optional[str] = Header(None)):
+    return get_study(study_id, authorization=authorization)
+
+
+@app.post("/studies/{study_id}/stop")
+def stop_study(study_id: str, authorization: Optional[str] = Header(None)):
+    return cancel_study(study_id, authorization=authorization)
+
+
+@app.delete("/studies/{study_id}")
+def delete_study(study_id: str, authorization: Optional[str] = Header(None)):
+    user = _require_user(authorization)
+    if study_id in jobs and jobs[study_id].get("status") in ("pending", "running"):
+        stop_events[study_id] = True
+    if store:
+        try:
+            store.update(study_id, status="deleted")
+        except Exception as e:
+            logger.warning(f"delete_study store update failed: {e}")
+    if study_id in jobs:
+        del jobs[study_id]
+    audit(study_id, "study_deleted", {"deleted_by": str(user.id)})
+    return {"status": "deleted", "study_id": study_id}

@@ -1,0 +1,97 @@
+# ============================================================
+# docker-compose.node.yml — UndosaTech FL Node
+#
+# Instructions for institutions:
+#   1. Copy this file to your server
+#   2. Copy .env.node.example to .env.node and fill in values
+#   3. Run: docker compose -f docker-compose.node.yml --env-file .env.node up -d
+# ============================================================
+
+version: "3.9"
+
+services:
+  undosatech-node:
+    image: undosatech/fl-node:latest
+    # OR build locally:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.node
+
+    container_name: undosatech-fl-node
+
+    restart: unless-stopped
+
+    ports:
+      # The orchestrator (Railway) must be able to reach this port.
+      # If behind NAT/firewall, set up port forwarding or use a VPN.
+      - "${NODE_PORT:-8080}:8080"
+
+    environment:
+      # ── Required ───────────────────────────────────────────────────
+      # A unique ID for your node, e.g. "nhs-kings-001"
+      NODE_ID: ${NODE_ID}
+
+      # Your institution's display name
+      INSTITUTION_NAME: ${INSTITUTION_NAME}
+
+      # Your institution's email domain, e.g. "kcl.ac.uk"
+      INSTITUTION_DOMAIN: ${INSTITUTION_DOMAIN}
+
+      # Contact email for this node
+      CONTACT_EMAIL: ${CONTACT_EMAIL}
+
+      # The public IP/hostname the Railway orchestrator can reach THIS machine on
+      NODE_PUBLIC_HOST: ${NODE_PUBLIC_HOST}
+
+      # Port this container listens on (default 8080)
+      NODE_PORT: ${NODE_PORT:-8080}
+
+      # Registration secret — provided by UndosaTech when you're invited
+      REGISTRATION_SECRET: ${REGISTRATION_SECRET}
+
+      # Orchestrator URL
+      ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-https://undosatech-production.up.railway.app}
+
+      # ── Optional ───────────────────────────────────────────────────
+      # Path where your local data is mounted (default /data)
+      DATA_PATH: ${DATA_PATH:-/data}
+
+      # Whether your server has a GPU (true/false)
+      GPU_AVAILABLE: ${GPU_AVAILABLE:-false}
+
+      # Maximum number of training samples to contribute per study
+      MAX_SAMPLES: ${MAX_SAMPLES:-5000}
+
+      # Comma-separated list of supported models
+      SUPPORTED_MODELS: ${SUPPORTED_MODELS:-ResNet-18,EfficientNet-B0}
+
+      # Comma-separated tags describing your data specialisation
+      TAGS: ${TAGS:-general}
+
+      # Path where the API key will be persisted after registration
+      # (so re-starts don't re-register)
+      KEY_FILE: /secrets/node_api_key.txt
+
+    volumes:
+      # Mount your local medical data (read-only — the node reads but never modifies it)
+      - ${LOCAL_DATA_PATH:-./sample_data}:/data:ro
+
+      # Persist the API key between container restarts
+      - node_secrets:/secrets
+
+    # Resource limits (adjust for your hardware)
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+volumes:
+  node_secrets:
+    driver: local

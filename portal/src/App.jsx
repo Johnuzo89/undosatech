@@ -9,7 +9,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY,
   { auth: { autoRefreshToken: true, persistSession: true } }
 )
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || 'https://undosatech-production.up.railway.app'
 
 const INSTANT_DOMAINS = ['nhs.uk','nhs.net','ac.uk','edu','edu.au','ac.nz','ac.za','uni-','tu-','eth.ch','epfl.ch','cam.ac.uk','ox.ac.uk','ucl.ac.uk','imperial.ac.uk','kcl.ac.uk','ed.ac.uk','dundee.ac.uk','gla.ac.uk','abdn.ac.uk','st-andrews.ac.uk','hw.ac.uk','strath.ac.uk','napier.ac.uk']
 
@@ -356,6 +356,33 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         </div>}
         {preset!=='custom'&&<div style={{fontSize:12,color:'#6b7280',background:'#f9fafb',borderRadius:8,padding:'8px 12px'}}>{form.num_rounds} rounds · {form.local_epochs} epoch{form.local_epochs>1?'s':''}/round</div>}
       </div>
+      {/* ── Differential Privacy ── */}
+      <div style={S.card}>
+        <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>Privacy</div>
+        <label style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',marginBottom:form.dp_enabled?12:0}}>
+          <div onClick={()=>set('dp_enabled',!form.dp_enabled)} style={{
+            width:40,height:22,borderRadius:99,border:'none',flexShrink:0,
+            background:form.dp_enabled?'#7c3aed':'#e5e7eb',
+            cursor:'pointer',position:'relative',transition:'background 0.2s',
+          }}>
+            <span style={{position:'absolute',top:3,left:form.dp_enabled?20:3,width:16,height:16,borderRadius:'50%',background:'#fff',transition:'left 0.2s',display:'block'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>Differential Privacy</div>
+            <div style={{fontSize:11,color:'#9ca3af'}}>Add calibrated Gaussian noise to gradients before FedAvg</div>
+          </div>
+        </label>
+        {form.dp_enabled&&(
+          <div style={{background:'#faf5ff',border:'1px solid #e9d5ff',borderRadius:8,padding:'12px 14px'}}>
+            <label style={S.lbl}>Privacy budget ε — lower = more private (0.1 – 10)</label>
+            <input style={{...S.inp,marginBottom:4}} type="number" min={0.1} max={10} step={0.1}
+              value={form.dp_epsilon} onChange={e=>set('dp_epsilon',+e.target.value)}/>
+            <div style={{fontSize:11,color:'#7c3aed'}}>
+              ε = {form.dp_epsilon} · noise multiplier σ = {+(1/form.dp_epsilon).toFixed(3)}
+            </div>
+          </div>
+        )}
+      </div>
       <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:12,color:'#0369a1'}}>
         🔒 <strong>Zero raw data transfer.</strong> Only model weight gradients are aggregated via FedAvg. Full governance audit trail generated automatically.
       </div>
@@ -390,7 +417,7 @@ function StudyView({ studyId, onBack, session }) {
           for(let i=prev.round;i<rounds.length;i++){
             const r=rounds[i]
             addLog(`⚡ Round ${r.round||r.round_number}/${data.num_rounds||data.total_rounds} — aggregating…`)
-            (Array.isArray(r.node_metrics) ? r.node_metrics : Object.values(r.node_metrics||{})).forEach(n=>{addLog(`   🏥 ${n.institution||n.node_id}`,'node');addLog(`      acc ${(n.accuracy*100).toFixed(1)}%  ·  loss ${n.loss?.toFixed(4)}  ·  ${n.num_examples||0} samples`,'node')})
+            ;(Array.isArray(r.node_metrics) ? r.node_metrics : Object.values(r.node_metrics||{})).forEach(n=>{addLog(`   🏥 ${n.institution||n.node_id}`,'node');addLog(`      acc ${(n.accuracy*100).toFixed(1)}%  ·  loss ${n.loss?.toFixed(4)}  ·  ${n.num_examples||0} samples`,'node')})
             addLog(`✓ Round complete — global acc ${((r.global_accuracy||r.accuracy||0)*100).toFixed(1)}%`,'success')
           }
           prev.round=rounds.length
@@ -485,9 +512,8 @@ function StudyView({ studyId, onBack, session }) {
         {tab==='per-class'&&<div style={S.card}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Per-class accuracy (latest round)</div>
           {lastRound?.per_class_accuracy?(()=>{
-            const pcData = Array.isArray(lastRound.per_class_accuracy)
-              ? lastRound.per_class_accuracy
-              : Object.values(lastRound.per_class_accuracy)
+            const pcRaw = lastRound.per_class_accuracy
+            const pcData = Array.isArray(pcRaw) ? pcRaw : Object.values(pcRaw)
             const labels=job.class_names||job.interpretability?.class_labels||pcData.map((_,i)=>`Class ${i}`)
             const data=pcData.map((acc,i)=>({name:labels[i]||`C${i}`,acc}))
             return<ResponsiveContainer width="100%" height={240}>
@@ -539,23 +565,6 @@ function StudyView({ studyId, onBack, session }) {
       </>:<div style={{color:'#9ca3af',padding:40,textAlign:'center'}}>Loading study…</div>}
     </div>
   )
-}
-
-function StudiesList({ studies, onSelect }) {
-  if(!studies.length)return<div style={{textAlign:'center',padding:'60px 20px',color:'#9ca3af'}}><div style={{fontSize:40,marginBottom:12}}>🔬</div><div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>No studies yet</div><div style={{fontSize:13}}>Launch your first federated training study.</div></div>
-  return<div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
-    {studies.map((s,i)=><div key={s.study_id||s.id} onClick={()=>onSelect(s.study_id||s.id)}
-      style={{display:'flex',alignItems:'center',gap:12,padding:'14px 20px',borderBottom:i<studies.length-1?'1px solid #f3f4f6':'none',cursor:'pointer'}}
-      onMouseEnter={e=>e.currentTarget.style.background='#fafafa'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.study_name||s.name}</div>
-        <div style={{fontSize:11,color:'#9ca3af'}}>{s.researcher_name||s.user_email} · {s.dataset} · {ARCH_INFO[s.architecture||s.model]?.name||s.architecture||s.model} · {s.num_rounds||s.total_rounds} rounds</div>
-      </div>
-      {s.status==='running'&&<div style={{fontSize:12,color:'#7c3aed',fontWeight:600}}>R{s.current_round}/{s.num_rounds||s.total_rounds}</div>}
-      {s.final_accuracy!=null&&<div style={{fontWeight:700,color:'#059669',fontSize:16}}>{(s.final_accuracy*100).toFixed(1)}%</div>}
-      <Badge status={s.status}/><span style={{color:'#d1d5db'}}>›</span>
-    </div>)}
-  </div>
 }
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
@@ -638,14 +647,11 @@ export default function App() {
           onSelectionChange={setSelectedNodes}
         />
       )}
-      {tab==='studies'&&!selected&&<>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <h1 style={{fontSize:22,fontWeight:700}}>Studies</h1>
-          <div style={{fontSize:13,color:'#9ca3af'}}>{running>0&&<span style={{color:'#7c3aed',fontWeight:600,marginRight:12}}>⚡ {running} running</span>}{studies.length} total</div>
-        </div>
-        <StudiesList studies={studies} onSelect={id=>setSelected(id)}/>
-      </>}
-      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)} session={session}/>}
+      {tab==='studies'&&(
+        selected
+          ? <StudyView studyId={selected} onBack={()=>setSelected(null)} session={session}/>
+          : <MyStudies session={session}/>
+      )}
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f9fafb;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased} input,select,button,textarea{font-family:inherit} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}`}</style>
   </div>
