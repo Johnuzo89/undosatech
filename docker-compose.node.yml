@@ -1,97 +1,65 @@
-# ============================================================
-# docker-compose.node.yml — UndosaTech FL Node
+# docker-compose.node.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# UndosaTech FL Node — institutions run this on their own infrastructure.
 #
-# Instructions for institutions:
-#   1. Copy this file to your server
-#   2. Copy .env.node.example to .env.node and fill in values
-#   3. Run: docker compose -f docker-compose.node.yml --env-file .env.node up -d
-# ============================================================
-
-version: "3.9"
+# SETUP (institution IT team):
+#   1. Copy this file and create a .env.node file (see bottom of this file)
+#   2. docker compose -f docker-compose.node.yml up -d
+#   3. Check logs: docker compose -f docker-compose.node.yml logs -f
+#   4. The node appears in app.undosatech.com → Nodes tab within 30 seconds.
+#
+# SUPPORT: contact the UndosaTech team for NODE_REGISTRATION_SECRET.
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
-  undosatech-node:
+  fl-node:
     image: undosatech/fl-node:latest
-    # OR build locally:
+    # Or build locally from source:
     # build:
     #   context: .
     #   dockerfile: Dockerfile.node
 
     container_name: undosatech-fl-node
-
     restart: unless-stopped
 
-    ports:
-      # The orchestrator (Railway) must be able to reach this port.
-      # If behind NAT/firewall, set up port forwarding or use a VPN.
-      - "${NODE_PORT:-8080}:8080"
+    env_file:
+      - .env.node   # ← create this file (see template at bottom)
 
     environment:
-      # ── Required ───────────────────────────────────────────────────
-      # A unique ID for your node, e.g. "nhs-kings-001"
-      NODE_ID: ${NODE_ID}
+      ORCHESTRATOR_URL: "https://undosatech-production.up.railway.app"
 
-      # Your institution's display name
-      INSTITUTION_NAME: ${INSTITUTION_NAME}
-
-      # Your institution's email domain, e.g. "kcl.ac.uk"
-      INSTITUTION_DOMAIN: ${INSTITUTION_DOMAIN}
-
-      # Contact email for this node
-      CONTACT_EMAIL: ${CONTACT_EMAIL}
-
-      # The public IP/hostname the Railway orchestrator can reach THIS machine on
-      NODE_PUBLIC_HOST: ${NODE_PUBLIC_HOST}
-
-      # Port this container listens on (default 8080)
-      NODE_PORT: ${NODE_PORT:-8080}
-
-      # Registration secret — provided by UndosaTech when you're invited
-      REGISTRATION_SECRET: ${REGISTRATION_SECRET}
-
-      # Orchestrator URL
-      ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-https://undosatech-production.up.railway.app}
-
-      # ── Optional ───────────────────────────────────────────────────
-      # Path where your local data is mounted (default /data)
-      DATA_PATH: ${DATA_PATH:-/data}
-
-      # Whether your server has a GPU (true/false)
-      GPU_AVAILABLE: ${GPU_AVAILABLE:-false}
-
-      # Maximum number of training samples to contribute per study
-      MAX_SAMPLES: ${MAX_SAMPLES:-5000}
-
-      # Comma-separated list of supported models
-      SUPPORTED_MODELS: ${SUPPORTED_MODELS:-ResNet-18,EfficientNet-B0}
-
-      # Comma-separated tags describing your data specialisation
-      TAGS: ${TAGS:-general}
-
-      # Path where the API key will be persisted after registration
-      # (so re-starts don't re-register)
-      KEY_FILE: /secrets/node_api_key.txt
+    ports:
+      - "${NODE_PORT:-8080}:8080"   # Flower gRPC — must be reachable from internet
 
     volumes:
-      # Mount your local medical data (read-only — the node reads but never modifies it)
-      - ${LOCAL_DATA_PATH:-./sample_data}:/data:ro
-
-      # Persist the API key between container restarts
-      - node_secrets:/secrets
-
-    # Resource limits (adjust for your hardware)
-    deploy:
-      resources:
-        limits:
-          cpus: "4.0"
-          memory: 8G
+      - node_credentials:/app      # persists api_key across container restarts
+      # Optional: mount your local data directory (never leaves this machine)
+      # - /path/to/local/patient/data:/data:ro
 
     logging:
       driver: "json-file"
       options:
-        max-size: "100m"
+        max-size: "50m"
         max-file: "3"
 
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
-  node_secrets:
-    driver: local
+  node_credentials:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Create .env.node alongside this file (never commit to version control):
+#
+#   NODE_ID=nhs-kings-001
+#   INSTITUTION_NAME=King's College Hospital NHS Foundation Trust
+#   INSTITUTION_DOMAIN=kch.nhs.uk
+#   CONTACT_EMAIL=research-it@kch.nhs.uk
+#   NODE_HOST=203.0.113.10
+#   NODE_PORT=8080
+#   NODE_REGISTRATION_SECRET=<ask UndosaTech team for this>
+#   GPU_AVAILABLE=false
+#   MAX_SAMPLES=10000
+#   SUPPORTED_MODELS=ResNet-18,ResNet-50,EfficientNet-B0
+#   TAGS=ophthalmology,retinal
+# ─────────────────────────────────────────────────────────────────────────────

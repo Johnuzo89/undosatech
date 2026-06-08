@@ -1,31 +1,45 @@
-# ============================================================
-# Dockerfile.node — UndosaTech FL Node
-# Build: docker build -f Dockerfile.node -t undosatech-node .
-# Run:   see docker-compose.node.yml
-# ============================================================
+# Dockerfile.node
+# ─────────────────────────────────────────────────────────────────────────────
+# UndosaTech Federated Learning Node — for institutions running on-premise
+#
+# Build:   docker build -f Dockerfile.node -t undosatech/fl-node:latest .
+# Publish: docker push undosatech/fl-node:latest
+# Run:     see docker-compose.node.yml
+# ─────────────────────────────────────────────────────────────────────────────
 
 FROM python:3.11-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# System deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Deps layer (cached independently of code)
+COPY fl_nodes/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Python deps
-COPY fl_nodes/requirements.txt ./requirements-node.txt
-RUN pip install --no-cache-dir -r requirements-node.txt
+# Node code only — orchestrator code is NOT copied here
+COPY fl_nodes/client.py ./client.py
 
-# Copy FL node code
-COPY fl_nodes/ ./fl_nodes/
+# Credentials file lives here (mount a volume to persist across restarts)
+RUN mkdir -p /app
 
-# Copy the registration bootstrap script
-COPY fl_nodes/register_and_run.sh ./register_and_run.sh
-RUN chmod +x register_and_run.sh
+# ── Runtime environment (override all at runtime via .env) ─────────────────
+ENV ORCHESTRATOR_URL="https://undosatech-production.up.railway.app"
+ENV NODE_ID=""
+ENV INSTITUTION_NAME=""
+ENV INSTITUTION_DOMAIN=""
+ENV CONTACT_EMAIL=""
+ENV NODE_HOST=""
+ENV NODE_PORT="8080"
+ENV NODE_REGISTRATION_SECRET=""
+ENV GPU_AVAILABLE="auto"
+ENV MAX_SAMPLES=""
+ENV SUPPORTED_MODELS=""
+ENV TAGS=""
 
-# Health check — proves the node's local HTTP server is alive
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${NODE_PORT:-8080}/health || exit 1
+EXPOSE 8080
 
-ENTRYPOINT ["./register_and_run.sh"]
+HEALTHCHECK --interval=60s --timeout=10s --start-period=90s --retries=3 \
+  CMD python -c "import json,pathlib; d=json.loads(pathlib.Path('/app/.node_credentials.json').read_text()); exit(0 if d.get('api_key') else 1)"
+
+CMD ["python", "-u", "client.py"]
