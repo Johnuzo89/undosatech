@@ -9,7 +9,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY,
   { auth: { autoRefreshToken: true, persistSession: true } }
 )
-const API = import.meta.env.VITE_API_URL || 'https://undosatech-production.up.railway.app'
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const INSTANT_DOMAINS = ['nhs.uk','nhs.net','ac.uk','edu','edu.au','ac.nz','ac.za','uni-','tu-','eth.ch','epfl.ch','cam.ac.uk','ox.ac.uk','ucl.ac.uk','imperial.ac.uk','kcl.ac.uk','ed.ac.uk','dundee.ac.uk','gla.ac.uk','abdn.ac.uk','st-andrews.ac.uk','hw.ac.uk','strath.ac.uk','napier.ac.uk']
 
@@ -356,33 +356,6 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         </div>}
         {preset!=='custom'&&<div style={{fontSize:12,color:'#6b7280',background:'#f9fafb',borderRadius:8,padding:'8px 12px'}}>{form.num_rounds} rounds · {form.local_epochs} epoch{form.local_epochs>1?'s':''}/round</div>}
       </div>
-      {/* ── Differential Privacy ── */}
-      <div style={S.card}>
-        <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>Privacy</div>
-        <label style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',marginBottom:form.dp_enabled?12:0}}>
-          <div onClick={()=>set('dp_enabled',!form.dp_enabled)} style={{
-            width:40,height:22,borderRadius:99,border:'none',flexShrink:0,
-            background:form.dp_enabled?'#7c3aed':'#e5e7eb',
-            cursor:'pointer',position:'relative',transition:'background 0.2s',
-          }}>
-            <span style={{position:'absolute',top:3,left:form.dp_enabled?20:3,width:16,height:16,borderRadius:'50%',background:'#fff',transition:'left 0.2s',display:'block'}}/>
-          </div>
-          <div>
-            <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>Differential Privacy</div>
-            <div style={{fontSize:11,color:'#9ca3af'}}>Add calibrated Gaussian noise to gradients before FedAvg</div>
-          </div>
-        </label>
-        {form.dp_enabled&&(
-          <div style={{background:'#faf5ff',border:'1px solid #e9d5ff',borderRadius:8,padding:'12px 14px'}}>
-            <label style={S.lbl}>Privacy budget ε — lower = more private (0.1 – 10)</label>
-            <input style={{...S.inp,marginBottom:4}} type="number" min={0.1} max={10} step={0.1}
-              value={form.dp_epsilon} onChange={e=>set('dp_epsilon',+e.target.value)}/>
-            <div style={{fontSize:11,color:'#7c3aed'}}>
-              ε = {form.dp_epsilon} · noise multiplier σ = {+(1/form.dp_epsilon).toFixed(3)}
-            </div>
-          </div>
-        )}
-      </div>
       <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:12,color:'#0369a1'}}>
         🔒 <strong>Zero raw data transfer.</strong> Only model weight gradients are aggregated via FedAvg. Full governance audit trail generated automatically.
       </div>
@@ -428,7 +401,7 @@ function StudyView({ studyId, onBack, session }) {
         prev.status=data.status
       }catch(e){if(!e.message.includes('Token validation'))addLog(`⚠ Poll error: ${e.message}`,'error')}
     }
-    if(!session?.access_token){setTimeout(poll,1000);return};poll();const id=setInterval(()=>{if(['completed','cancelled','failed','stopped'].includes(job?.status)){if(!job?.rounds?.length)poll();return};poll()},2000);return()=>clearInterval(id)
+    if(!session?.access_token){setTimeout(poll,1000);return};poll();const id=setInterv>{if(['completed','cancelled','failed','stopped'].includes(job?.status)){if(!job?.rounds?.length)poll();return};poll()},2000);return()=>clearInterval(id)
   },[studyId])
   const rounds = job?.round_results||job?.rounds||[]
   const safeNodes = Array.isArray(job?.nodes) ? job.nodes : []
@@ -479,7 +452,7 @@ function StudyView({ studyId, onBack, session }) {
         {job.data_description&&<div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'8px 14px',fontSize:12,color:'#065f46',marginBottom:14}}>📊 {job.data_description}</div>}
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:10,marginBottom:16}}>
           <Stat label="Status" value={job.status}/>
-          <Stat label="Rounds" value={`${job.current_round||0}/${job.num_rounds||job.total_rounds}`} color="#1d4ed8"/>
+          <Stat label="Rounds" vue={`${job.current_round||0}/${job.num_rounds||job.total_rounds}`} color="#1d4ed8"/>
           {job.final_accuracy!=null&&<Stat label="Accuracy" value={`${(job.final_accuracy*100).toFixed(1)}%`} color="#059669"/>}
           {job.final_loss!=null&&<Stat label="Loss" value={job.final_loss?.toFixed(4)}/>}
           {job.num_classes&&<Stat label="Classes" value={job.num_classes}/>}
@@ -489,7 +462,7 @@ function StudyView({ studyId, onBack, session }) {
         </div>
         {tab==='live'&&<div style={S.card}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:10,display:'flex',justifyContent:'space-between'}}><span>Live training log</span><span style={{fontWeight:400,color:'#9ca3af'}}>{log.length} events · polling every 2s</span></div>
-          <div ref={logRef} style={{fontFamily:'monospace',fontSize:12,maxHeight:400,overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>
+          <div ref={logRef} style={{fontFamily:'monospace',fontSize:12,maxHeight:400,overflow:'auto',display:'flex',flexDirection:'column',gap:2}}>
             {log.map((l,i)=><div key={i} style={{display:'flex',gap:10}}><span style={{color:'#d1d5db',flexShrink:0}}>{l.ts}</span><span style={{color:logCol[l.type]||'#374151'}}>{l.msg}</span></div>)}
           </div>
         </div>}
@@ -502,7 +475,7 @@ function StudyView({ studyId, onBack, session }) {
                 <XAxis dataKey="round" tick={{fontSize:11,fill:'#9ca3af'}}/>
                 <YAxis yAxisId="a" domain={[0,100]} tick={{fontSize:11,fill:'#9ca3af'}} unit="%"/>
                 <YAxis yAxisId="l" orientation="right" tick={{fontSize:11,fill:'#9ca3af'}}/>
-                <Tooltip formatter={(v,n)=>n==='acc'?`${v}%`:v}/>
+                <Tooltip formatter(v,n)=>n==='acc'?`${v}%`:v}/>
                 <Legend wrapperStyle={{fontSize:12}}/>
                 <Line yAxisId="a" type="monotone" dataKey="acc" name="Accuracy" stroke="#1d4ed8" strokeWidth={2} dot={{r:4}} activeDot={{r:6}}/>
                 <Line yAxisId="l" type="monotone" dataKey="loss" name="Loss" stroke="#dc2626" strokeWidth={2} dot={{r:4}} strokeDasharray="4 2"/>
@@ -511,9 +484,11 @@ function StudyView({ studyId, onBack, session }) {
         </div>}
         {tab==='per-class'&&<div style={S.card}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Per-class accuracy (latest round)</div>
-          {lastRound?.per_class_accuracy?(()=>{
-            const pcRaw = lastRound.per_class_accuracy
-            const pcData = Array.isArray(pcRaw) ? pcRaw : Object.values(pcRaw)
+          {(lastRound?.per_class_accuracy || job?.per_class_accuracy)?(()=>{
+            const rawPc = lastRound?.per_class_accuracy || job?.per_class_accuracy
+            const pcData = Array.isArray(rawPc)
+              ? rawPc
+              : Object.values(rawPc)
             const labels=job.class_names||job.interpretability?.class_labels||pcData.map((_,i)=>`Class ${i}`)
             const data=pcData.map((acc,i)=>({name:labels[i]||`C${i}`,acc}))
             return<ResponsiveContainer width="100%" height={240}>
@@ -531,7 +506,7 @@ function StudyView({ studyId, onBack, session }) {
           {(Array.isArray(lastRound?.node_metrics) ? lastRound.node_metrics : Object.values(lastRound?.node_metrics||{})).map(n=><div key={n.node_id} style={{...S.card,display:'flex',alignItems:'center',gap:14}}>
             <div style={{width:42,height:42,borderRadius:'50%',background:'#eff6ff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>🏥</div>
             <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{n.institution}</div><div style={{fontSize:12,color:'#9ca3af'}}>{n.num_examples} samples · lr {n.learning_rate}</div></div>
-            <div style={{textAlign:'right'}}><div style={{fontWeight:700,color:'#1d4ed8',fontSize:17}}>{(n.accuracy*100).toFixed(1)}%</div><div style={{fontSize:11,color:'#9ca3af'}}>local acc</div></div>
+            <div style={{textAlign:'right'}}><div style={{fontWeight:700,color:'#1d4ed8',fontSize:17}(n.accuracy*100).toFixed(1)}%</div><div style={{fontSize:11,color:'#9ca3af'}}>local acc</div></div>
             <span style={{background:'#ecfdf5',color:'#065f46',border:'1px solid #a7f3d0',padding:'2px 9px',borderRadius:20,fontSize:11,fontWeight:500}}>{n.governance_status}</span>
           </div>)||<div style={{...S.card,color:'#9ca3af',fontSize:13}}>Node metrics after round 1.</div>}
         </div>}
@@ -548,17 +523,17 @@ function StudyView({ studyId, onBack, session }) {
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:13}}><span>{f.feature}</span><span style={{fontWeight:600,color:f.direction==='positive'?'#059669':'#dc2626'}}>{f.direction==='positive'?'+':'−'}{(f.importance*100).toFixed(1)}%</span></div>
               <div style={{height:6,background:'#f3f4f6',borderRadius:3}}><div style={{height:'100%',width:`${f.importance*100}%`,background:f.direction==='positive'?'#1d4ed8':'#dc2626',borderRadius:3}}/></div>
             </div>)}
-          </>:<div style={{color:'#9ca3af',fontSize:13}}>Available after training completes.</div>}
+          </>:iv style={{color:'#9ca3af',fontSize:13}}>Available after training completes.</div>}
         </div>}
         {tab==='audit'&&<div style={S.card}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:10}}>Governance audit trail · {audit.length} events</div>
           <div style={{fontFamily:'monospace',fontSize:11,maxHeight:380,overflowY:'auto'}}>
             {audit.length===0?<span style={{color:'#9ca3af'}}>Available after training completes.</span>:
-              audit.slice().reverse().map(e=><div key={e.event_id} style={{padding:'5px 0',borderBottom:'1px solid #f3f4f6',display:'flex',gap:10}}>
+              audit.slice().reverse().map(e=><dv key={e.event_id} style={{padding:'5px 0',borderBottom:'1px solid #f3f4f6',display:'flex',gap:10}}>
                 <span style={{color:'#9ca3af',flexShrink:0}}>{new Date(e.timestamp).toLocaleTimeString()}</span>
                 <span style={{color:'#1d4ed8',flexShrink:0}}>{e.event_type}</span>
                 {e.event_type==='round_completed'&&<span style={{color:'#374151'}}>round {e.round} · acc {(e.global_accuracy*100).toFixed(1)}%</span>}
-                {e.event_type==='study_completed'&&<span style={{color:'#059669',fontWeight:600}}>final acc {(e.final_accuracy*100).toFixed(1)}%</span>}
+                {e.event_type==='study_completed'&&<span style={color:'#059669',fontWeight:600}}>final acc {(e.final_accuracy*100).toFixed(1)}%</span>}
               </div>)}
           </div>
         </div>}
@@ -567,7 +542,24 @@ function StudyView({ studyId, onBack, session }) {
   )
 }
 
-// ── MAIN APP ──────────────────────────────────────────────────────────────────
+function StudiesList({ studies, onSelect }) {
+  if(!studies.length)return<div style={{textAlign:'center',padding:'60px 20px',color:'#9ca3af'}}><div style={{fontSize:40,marginBottom:12}}>🔬</div><div style={{fontSize:16,fontWeight:600,color:'#374151',maBottom:6}}>No studies yet</div><div style={{fontSize:13}}>Launch your first federated training study.</div></div>
+  return<div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
+    {studies.map((s,i)=><div key={s.study_id||s.id} onClick={()=>onSelect(s.study_id||s.id)}
+      style={{display:'flex',alignItems:'center',gap:12,padding:'14px 20px',borderBottom:i<studies.length-1?'1px solid #f3f4f6':'none',cursor:'pointer'}}
+      onMouseEnter={e=>e.currentTarget.style.background='#fafafa'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.study_name||s.name}</div>
+        <div style={{fontSize:11,color:'#9ca3af'}}>{s.researcher_name||s.user_email} · {s.dataset} · {ARCH_INFO[s.architecture||s.model]?.name||s.architecture||s.model} · {s.num_rounds||s.total_rounds} rounds</div>
+      </div>
+      {s.status===nning'&&<div style={{fontSize:12,color:'#7c3aed',fontWeight:600}}>R{s.current_round}/{s.num_rounds||s.total_rounds}</div>}
+      {s.final_accuracy!=null&&<div style={{fontWeight:700,color:'#059669',fontSize:16}}>{(s.final_accuracy*100).toFixed(1)}%</div>}
+      <Badge status={s.status}/><span style={{color:'#d1d5db'}}>›</span>
+    </div>)}
+  </div>
+}
+
+// ── MAIN APP ─────────────────────────────────────────────�───────────────────
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -647,11 +639,14 @@ export default function App() {
           onSelectionChange={setSelectedNodes}
         />
       )}
-      {tab==='studies'&&(
-        selected
-          ? <StudyView studyId={selected} onBack={()=>setSelected(null)} session={session}/>
-          : <MyStudies session={session}/>
-      )}
+      {tab==='studies'&&!selected&&<>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+          <h1 style={{fontSize:22,fontWeight:700}}>Studies</h1>
+          <div style={{fontSize:13,color:'#9ca3af'}}>{running>0&&<span style={{color:'#7c3aed',fontWeight:600,marginRight:12}}>⚡ {running} running</span>}{studies.length} total</div>
+        </div>
+        <StudiesList studies={studies} onSelect={id=>setSelected()}/>
+      </>}
+      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)} session={session}/>}
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f9fafb;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased} input,select,button,textarea{font-family:inherit} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}`}</style>
   </div>
