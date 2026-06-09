@@ -647,6 +647,24 @@ async def create_study(
             "nodes": nodes_config, "upload_filename": file.filename if file else None,
         }
 
+    # Auto-invite real registered nodes (skip simulated placeholders)
+    SIM_SUFFIXES = ("-sim",)
+    if store and supabase_admin and nodes_config:
+        for n in nodes_config:
+            nid = n.get("node_id") if isinstance(n, dict) else str(n)
+            if nid and not any(nid.endswith(s) for s in SIM_SUFFIXES):
+                try:
+                    supabase_admin.table("study_invitations").insert({
+                        "study_id": study_id,
+                        "node_id": nid,
+                        "invited_by": str(user.id),
+                        "invited_by_email": getattr(user, "email", ""),
+                        "study_name": study_name,
+                        "status": "pending",
+                    }).execute()
+                except Exception as e:
+                    logger.warning(f"Auto-invite for node {nid} failed: {e}")
+
     t = threading.Thread(
         target=train_thread,
         args=(study_id, upload_path, dataset, num_rounds, local_epochs, architecture, nodes_config, dp_noise_multiplier),
@@ -1177,6 +1195,184 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
         ]
     except Exception as e:
         raise HTTPException(500, f"Failed to list users: {e}")
+
+
+# ════════════════════════════════════════════════════════════════
+# STUDY INVITATION ENDPOINTS
+# ════════════════════════════════════════════════════════════════
+
+class InviteNodesRequest(BaseModel):
+    node_ids: List[str]
+    message: str = ""
+
+
+@app.post("/studies/{study_id}/invite", status_code=201)
+async def invite_nodes(study_id: str, req: InviteNodesRequest, authorization: Optional[str] = Header(None)):
+    """Invite one or more registered nodes to participate in a study."""
+    user = _require_user(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    if not req.node_ids:
+        raise HTTPException(400, "node_ids required")
+
+    study = store.get(study_id) if store else jobs.get(study_id)
+    if not study:
+        raise HTTPException(404, "Study not found")
+
+    is_admin = hasattr(user, "email") and user.email in ADMIN_EMAILS
+    if store and study.get("user_id") != str(user.id) and not is_admin:
+        raise HTTPException(403, "Not your study")
+
+    study_name = study.get("name") or study.get("study_name", "Untitled study")
+    results = []
+    for node_id in req.node_ids:
+        try:
+            supabase_admin.table("study_invitations").upsert({
+                "study_id": study_id,
+                "node_id": node_id,
+                "invited_by": str(user.id),
+                "invited_by_email": getattr(user, "email", ""),
+                "study_name": study_name,
+                "message": req.message,
+                "status": "pending",
+            }, on_conflict="study_id,node_id").execute()
+            results.append({"node_id": node_id, "status": "invited"})
+        except Exception as e:
+            results.append({"node_id": node_id, "error": str(e)})
+    return {"invited": results}
+
+
+@app.get("/studies/{study_id}/invitations")
+async def get_study_invitations(study_id: str, authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    if not supabase_admin:
+        return []
+    try:
+        result = (
+            supabase_admin.table("study_invitations")
+            .select("*, fl_nodes(node_id, institution_name, institution_domain, status, gpu_available, contact_email)")
+            .eq("study_id", study_id)
+            .order("invited_at", desc=False)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.warning(f"get_study_invitations failed: {e}")
+        return []
+
+
+@app.get("/nodes/{node_id}/invitations")
+async def get_node_invitations(
+    node_id: str,
+    status: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    _require_user(authorization)
+    if not supabase_admin:
+        return []
+    try:
+        query = (
+            supabase_admin.table("study_invitations")
+            .select("*")
+            .eq("node_id", node_id)
+            .order("invited_at", desc=True)
+        )
+        if status:
+            query = query.eq("status", status)
+        return query.execute().data or []
+    except Exception as e:
+        logger.warning(f"get_node_invitations failed: {e}")
+        return []
+
+
+@app.post("/invitations/{inv_id}/accept")
+async def accept_invitation(
+    inv_id: int,
+    body: dict = Body(default={}),
+    authorization: Optional[str] = Header(None),
+):
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        inv = supabase_admin.table("study_invitations").select("*").eq("id", inv_id).single().execute().data
+    except Exception:
+        inv = None
+    if not inv:
+        raise HTTPException(404, "Invitation not found")
+    if inv["status"] != "pending":
+        raise HTTPException(400, f"Invitation is already {inv['status']}")
+
+    api_key = body.get("api_key")
+    if api_key:
+        if not _verify_node_api_key(inv["node_id"], api_key):
+            raise HTTPException(401, "Invalid API key for this node")
+    else:
+        user = _require_user(authorization)
+        if not (hasattr(user, "email") and user.email in ADMIN_EMAILS):
+            raise HTTPException(403, "Admin access or node API key required")
+
+    supabase_admin.table("study_invitations").update({
+        "status": "accepted",
+        "responded_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", inv_id).execute()
+    return {"status": "accepted", "invitation_id": inv_id, "study_id": inv["study_id"]}
+
+
+@app.post("/invitations/{inv_id}/decline")
+async def decline_invitation(
+    inv_id: int,
+    body: dict = Body(default={}),
+    authorization: Optional[str] = Header(None),
+):
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        inv = supabase_admin.table("study_invitations").select("*").eq("id", inv_id).single().execute().data
+    except Exception:
+        inv = None
+    if not inv:
+        raise HTTPException(404, "Invitation not found")
+    if inv["status"] != "pending":
+        raise HTTPException(400, f"Invitation is already {inv['status']}")
+
+    api_key = body.get("api_key")
+    if api_key:
+        if not _verify_node_api_key(inv["node_id"], api_key):
+            raise HTTPException(401, "Invalid API key for this node")
+    else:
+        user = _require_user(authorization)
+        if not (hasattr(user, "email") and user.email in ADMIN_EMAILS):
+            raise HTTPException(403, "Admin access or node API key required")
+
+    supabase_admin.table("study_invitations").update({
+        "status": "declined",
+        "responded_at": datetime.now(timezone.utc).isoformat(),
+        "decline_reason": body.get("reason", ""),
+    }).eq("id", inv_id).execute()
+    return {"status": "declined", "invitation_id": inv_id}
+
+
+@app.delete("/invitations/{inv_id}")
+async def withdraw_invitation(inv_id: int, authorization: Optional[str] = Header(None)):
+    user = _require_user(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        inv = supabase_admin.table("study_invitations").select("*").eq("id", inv_id).single().execute().data
+    except Exception:
+        inv = None
+    if not inv:
+        raise HTTPException(404, "Invitation not found")
+
+    is_admin = hasattr(user, "email") and user.email in ADMIN_EMAILS
+    if not (is_admin or str(user.id) == inv.get("invited_by")):
+        raise HTTPException(403, "Only the researcher or admin can withdraw an invitation")
+
+    supabase_admin.table("study_invitations").update({
+        "status": "withdrawn",
+        "responded_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", inv_id).execute()
+    return {"status": "withdrawn", "invitation_id": inv_id}
 
 
 @app.get("/admin/storage-debug")

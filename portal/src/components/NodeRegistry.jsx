@@ -107,21 +107,25 @@ function NodeCard({ node, selected, onToggle, onDetail }) {
 }
 
 // ── Node detail modal ─────────────────────────────────────────────────────────
-function NodeDetailModal({ nodeId, session, onClose, onApprove, onSuspend }) {
+function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspend }) {
   const [node, setNode] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState(null);
+  const [invitations, setInvitations] = useState([]);
+  const [invBusy, setInvBusy] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/nodes/${nodeId}`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` }
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setNode(await res.json());
+      const [nodeRes, invRes] = await Promise.all([
+        fetch(`${API}/nodes/${nodeId}`, { headers: { Authorization: `Bearer ${session?.access_token}` } }),
+        fetch(`${API}/nodes/${nodeId}/invitations`, { headers: { Authorization: `Bearer ${session?.access_token}` } }),
+      ]);
+      if (!nodeRes.ok) throw new Error(`HTTP ${nodeRes.status}`);
+      setNode(await nodeRes.json());
+      setInvitations(invRes.ok ? await invRes.json() : []);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -148,6 +152,23 @@ function NodeDetailModal({ nodeId, session, onClose, onApprove, onSuspend }) {
       setActionMsg(`✗ ${e.message}`);
     } finally {
       setActionBusy(false);
+    }
+  };
+
+  const respondInvitation = async (invId, action, reason = "") => {
+    setInvBusy(invId);
+    try {
+      const res = await fetch(`${API}/invitations/${invId}/${action}`, {
+        method: action === "withdraw" ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: action !== "withdraw" ? JSON.stringify({ reason }) : undefined,
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Failed"); }
+      await load();
+    } catch (e) {
+      setActionMsg(`✗ ${e.message}`);
+    } finally {
+      setInvBusy(null);
     }
   };
 
@@ -217,6 +238,48 @@ function NodeDetailModal({ nodeId, session, onClose, onApprove, onSuspend }) {
               : <div style={{ fontSize: 12, color: "#64748b" }}>No heartbeats recorded yet.</div>
             }
           </div>
+
+          {/* Study invitations */}
+          {invitations.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...label, marginBottom: 8 }}>Study Invitations ({invitations.length})</div>
+              <div style={{ borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                {invitations.map(inv => {
+                  const statusColors = {
+                    pending:   { bg: "rgba(251,191,36,0.1)",  text: "#fbbf24" },
+                    accepted:  { bg: "rgba(34,211,165,0.1)",  text: "#22d3a5" },
+                    declined:  { bg: "rgba(239,68,68,0.1)",   text: "#f87171" },
+                    withdrawn: { bg: "rgba(100,116,139,0.1)", text: "#64748b" },
+                  };
+                  const sc = statusColors[inv.status] || statusColors.pending;
+                  return (
+                    <div key={inv.id} style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.study_name || inv.study_id}</div>
+                        <div style={{ fontSize: 11, color: "#64748b" }}>
+                          {inv.invited_by_email || "Unknown researcher"} · {new Date(inv.invited_at).toLocaleDateString()}
+                        </div>
+                        {inv.message && <div style={{ fontSize: 11, color: "#64748b", fontStyle: "italic", marginTop: 2 }}>"{inv.message}"</div>}
+                      </div>
+                      <span style={{ padding: "2px 8px", borderRadius: 99, background: sc.bg, color: sc.text, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", flexShrink: 0 }}>{inv.status}</span>
+                      {isAdmin && inv.status === "pending" && (
+                        <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                          <button onClick={() => respondInvitation(inv.id, "accept")} disabled={invBusy === inv.id}
+                            style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "rgba(34,211,165,0.15)", color: "#22d3a5", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                            {invBusy === inv.id ? "…" : "Accept"}
+                          </button>
+                          <button onClick={() => respondInvitation(inv.id, "decline")} disabled={invBusy === inv.id}
+                            style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "rgba(239,68,68,0.1)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                            Decline
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Admin actions */}
           {actionMsg && (
@@ -469,7 +532,7 @@ docker ps --filter name=undosatech-fl-node`)}
 }
 
 // ── Main NodeRegistry ─────────────────────────────────────────────────────────
-export default function NodeRegistry({ session, selectedNodes, onSelectionChange, onLaunchWithNodes }) {
+export default function NodeRegistry({ session, selectedNodes, onSelectionChange, onLaunchWithNodes, isAdmin }) {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -650,6 +713,7 @@ export default function NodeRegistry({ session, selectedNodes, onSelectionChange
         <NodeDetailModal
           nodeId={detailNodeId}
           session={session}
+          isAdmin={isAdmin}
           onClose={() => setDetailNodeId(null)}
           onApprove={fetchNodes}
           onSuspend={fetchNodes}

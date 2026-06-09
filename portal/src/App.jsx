@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import NodeRegistry from './components/NodeRegistry'
 import MyStudies from './components/MyStudies'
 import AdminDashboard from './components/AdminDashboard'
+import StudyInvitations from './components/StudyInvitations'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -372,7 +373,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
 
 // ── STUDY VIEW ────────────────────────────────────────────────────────────────
 
-function StudyView({ studyId, onBack, session }) {
+function StudyView({ studyId, onBack, session, isAdmin }) {
   const [job,setJob]=useState(null); const [audit,setAudit]=useState([])
   const [tab,setTab]=useState('live')
   const [log,setLog]=useState([{ts:new Date().toLocaleTimeString(),msg:'Connecting to study…',type:'info'}])
@@ -480,7 +481,7 @@ function StudyView({ studyId, onBack, session }) {
           {job.num_classes&&<Stat label="Classes" value={job.num_classes}/>}
         </div>
         <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
-          {['live','chart','per-class','nodes','interpretability','audit'].map(t=><button key={t} style={tabBtn(t)} onClick={()=>setTab(t)}>{t}</button>)}
+          {['live','chart','per-class','nodes','interpretability','audit','invitations'].map(t=><button key={t} style={tabBtn(t)} onClick={()=>setTab(t)}>{t}</button>)}
         </div>
         {tab==='live'&&<div style={S.card}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:10,display:'flex',justifyContent:'space-between'}}><span>Live training log</span><span style={{fontWeight:400,color:'#9ca3af'}}>{log.length} events · polling every 2s</span></div>
@@ -559,6 +560,7 @@ function StudyView({ studyId, onBack, session }) {
               </div>)}
           </div>
         </div>}
+        {tab==='invitations'&&<StudyInvitations studyId={studyId} session={session} isAdmin={isAdmin}/>}
       </>:<div style={{color:'#9ca3af',padding:40,textAlign:'center'}}>Loading study…</div>}
     </div>
   )
@@ -659,6 +661,7 @@ export default function App() {
       {tab==='nodes'&&(
         <NodeRegistry
           session={session}
+          isAdmin={isAdmin}
           selectedNodes={selectedNodes}
           onSelectionChange={setSelectedNodes}
           onLaunchWithNodes={() => setTab('launch')}
@@ -671,7 +674,7 @@ export default function App() {
         </div>
         <StudiesList studies={studies} onSelect={id=>setSelected(id)}/>
       </>}
-      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)} session={session}/>}
+      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)} session={session} isAdmin={isAdmin}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f9fafb;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased} input,select,button,textarea{font-family:inherit} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}`}</style>
