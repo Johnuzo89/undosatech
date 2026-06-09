@@ -68,6 +68,39 @@ CREATE POLICY "Authenticated users can read nodes"
 -- No direct frontend writes to fl_nodes (all writes go through the backend API)
 
 
+-- ── access_requests ──────────────────────────────────────────────────────────
+-- Non-institutional users apply for access; admin reviews here.
+-- Frontend inserts via anon key; reads/updates go through the service key (backend).
+
+CREATE TABLE IF NOT EXISTS access_requests (
+    id                BIGSERIAL PRIMARY KEY,
+    email             TEXT NOT NULL,
+    full_name         TEXT NOT NULL,
+    institution       TEXT NOT NULL,
+    role              TEXT,
+    research_area     TEXT,
+    status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending', 'approved', 'rejected')),
+    rejection_reason  TEXT,
+    reviewed_at       TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests (status);
+CREATE INDEX IF NOT EXISTS idx_access_requests_email  ON access_requests (email);
+
+-- Anyone can insert a request (anon key)
+ALTER TABLE access_requests ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can submit an access request"
+  ON access_requests FOR INSERT
+  TO anon, authenticated
+  WITH CHECK (true);
+
+-- Only the service role (backend) can read or update
+-- No frontend SELECT policy — reads go through /admin/* API endpoints
+
+
 -- ── Verify ────────────────────────────────────────────────────────────────────
 -- After running the above, confirm:
 SELECT table_name FROM information_schema.tables

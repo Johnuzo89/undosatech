@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from 'recharts'
 import NodeRegistry from './components/NodeRegistry'
 import MyStudies from './components/MyStudies'
+import AdminDashboard from './components/AdminDashboard'
+
+const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'dr.uzoj@gmail.com').split(',')
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -610,6 +613,7 @@ export default function App() {
   const running=studies.filter(s=>s.status==='running').length
   const completed=studies.filter(s=>s.status==='completed').length
   const displayName=user.user_metadata?.full_name||user.email?.split('@')[0]||'Researcher'
+  const isAdmin=ADMIN_EMAILS.includes(user.email||'')
 
   const nav=(t,label,badge)=><button onClick={()=>{setTab(t);if(t!=='studies')setSelected(null)}}
     style={{padding:'7px 16px',borderRadius:8,fontSize:13,fontWeight:tab===t?600:400,cursor:'pointer',border:'none',background:tab===t?'#1d4ed8':'transparent',color:tab===t?'#fff':'#9ca3af',display:'flex',alignItems:'center',gap:6}}>
@@ -622,6 +626,7 @@ export default function App() {
       {nav('launch','🚀 Launch',0)}
       {nav('nodes','⬡ Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
+      {isAdmin&&nav('admin','⚙ Admin',0)}
       <div style={{marginLeft:'auto',display:'flex',gap:12,alignItems:'center',fontSize:12}}>
         {completed>0&&<span style={{color:'#34d399'}}>{completed} completed</span>}
         <span style={{color:online?'#34d399':'#f87171',display:'flex',alignItems:'center',gap:5}}>
@@ -655,6 +660,7 @@ export default function App() {
         <StudiesList studies={studies} onSelect={id=>setSelected(id)}/>
       </>}
       {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)} session={session}/>}
+      {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f9fafb;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased} input,select,button,textarea{font-family:inherit} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}`}</style>
   </div>
