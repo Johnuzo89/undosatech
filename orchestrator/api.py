@@ -24,7 +24,7 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 SUPABASE_URL             = os.getenv("SUPABASE_URL", "https://hpfuacpmocnsxdgbnidm.supabase.co")
 SUPABASE_SERVICE_KEY     = os.getenv("SUPABASE_SERVICE_KEY", "")
 NODE_REGISTRATION_SECRET = os.getenv("NODE_REGISTRATION_SECRET", "change-me")
-ADMIN_EMAILS             = [e.strip() for e in os.getenv("ADMIN_EMAILS", "dr.uzoj@gmail.com").split(",")]
+ADMIN_EMAILS             = [e.strip() for e in os.getenv("ADMIN_EMAILS", "john@undosatech.com").split(",")]
 
 supabase_admin = None
 store = None
