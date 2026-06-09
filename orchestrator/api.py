@@ -52,8 +52,12 @@ def _ensure_model_bucket():
     try:
         supabase_admin.storage.create_bucket("models", {"public": False})
         logger.info("Supabase Storage bucket 'models' created ✓")
-    except Exception:
-        pass  # bucket already exists — that's fine
+    except Exception as e:
+        err = str(e).lower()
+        if "already exists" in err or "duplicate" in err or "409" in err:
+            logger.info("Supabase Storage bucket 'models' already exists ✓")
+        else:
+            logger.warning(f"Could not create 'models' bucket: {e}")
 
 
 def _upload_model_to_storage(study_id: str, local_path: Path, arch: str) -> Optional[str]:
@@ -63,11 +67,24 @@ def _upload_model_to_storage(study_id: str, local_path: Path, arch: str) -> Opti
     storage_key = f"{study_id}/{arch}_final.pt"
     try:
         with open(local_path, "rb") as f:
+            data = f.read()
+        try:
             supabase_admin.storage.from_("models").upload(
-                storage_key, f.read(),
-                file_options={"content-type": "application/octet-stream", "upsert": "true"},
+                storage_key, data,
+                file_options={"content-type": "application/octet-stream", "upsert": True},
             )
-        logger.info(f"[{study_id[:8]}] Model uploaded to Supabase Storage → {storage_key}")
+        except Exception as first_err:
+            # Bucket may not exist yet — create it and retry once
+            logger.warning(f"[{study_id[:8]}] Upload attempt 1 failed ({first_err}) — creating bucket and retrying")
+            try:
+                supabase_admin.storage.create_bucket("models", {"public": False})
+            except Exception:
+                pass
+            supabase_admin.storage.from_("models").upload(
+                storage_key, data,
+                file_options={"content-type": "application/octet-stream", "upsert": True},
+            )
+        logger.info(f"[{study_id[:8]}] Model uploaded to Supabase Storage → {storage_key} ({len(data)} bytes)")
         return storage_key
     except Exception as e:
         logger.warning(f"[{study_id[:8]}] Storage upload failed: {e}")
@@ -1160,6 +1177,36 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
         ]
     except Exception as e:
         raise HTTPException(500, f"Failed to list users: {e}")
+
+
+@app.get("/admin/storage-debug")
+async def storage_debug(authorization: Optional[str] = Header(None)):
+    """Diagnose Supabase Storage state — lists buckets and what's in the models bucket."""
+    _require_admin(authorization)
+    if not supabase_admin:
+        return {"error": "Supabase not connected"}
+    result: dict = {}
+    try:
+        buckets = supabase_admin.storage.list_buckets()
+        result["buckets"] = [getattr(b, "name", str(b)) for b in (buckets or [])]
+    except Exception as e:
+        result["bucket_list_error"] = str(e)
+    try:
+        files = supabase_admin.storage.from_("models").list()
+        result["models_bucket_root_entries"] = len(files or [])
+        result["models_bucket_sample"] = [f.get("name") for f in (files or [])[:10]]
+    except Exception as e:
+        result["models_bucket_error"] = str(e)
+    # Check all completed studies for storage keys
+    if store:
+        try:
+            all_studies = store.list_all()
+            completed = [s for s in all_studies if s.get("status") == "completed"]
+            result["completed_studies"] = len(completed)
+            result["with_storage_key"] = sum(1 for s in completed if s.get("model_storage_key"))
+        except Exception as e:
+            result["studies_error"] = str(e)
+    return result
 
 
 @app.get("/studies/{study_id}/logs")
