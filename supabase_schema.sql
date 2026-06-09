@@ -110,6 +110,34 @@ CREATE POLICY "Anyone can submit an access request"
 -- No frontend SELECT policy — reads go through /admin/* API endpoints
 
 
+-- ── study_invitations ────────────────────────────────────────────────────────
+-- Researcher A invites Institution B's node to participate in a study.
+-- Training still starts immediately; invitations are a governance/consent record.
+-- Responded to by admin (or node operator via API key).
+
+CREATE TABLE IF NOT EXISTS study_invitations (
+    id                BIGSERIAL PRIMARY KEY,
+    study_id          TEXT NOT NULL,
+    node_id           TEXT NOT NULL,
+    invited_by        TEXT NOT NULL,          -- user_id of researcher
+    invited_by_email  TEXT,
+    study_name        TEXT,
+    message           TEXT,
+    status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending', 'accepted', 'declined', 'withdrawn')),
+    responded_at      TIMESTAMPTZ,
+    decline_reason    TEXT,
+    invited_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(study_id, node_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_invitations_study  ON study_invitations(study_id);
+CREATE INDEX IF NOT EXISTS idx_study_invitations_node   ON study_invitations(node_id);
+CREATE INDEX IF NOT EXISTS idx_study_invitations_status ON study_invitations(status);
+
+ALTER TABLE study_invitations ENABLE ROW LEVEL SECURITY;
+-- All reads/writes via service key (backend) — no frontend direct access
+
 -- ── Verify ────────────────────────────────────────────────────────────────────
 -- After running the above, confirm:
 SELECT table_name FROM information_schema.tables
