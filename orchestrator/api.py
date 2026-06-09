@@ -24,6 +24,7 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 SUPABASE_URL             = os.getenv("SUPABASE_URL", "https://hpfuacpmocnsxdgbnidm.supabase.co")
 SUPABASE_SERVICE_KEY     = os.getenv("SUPABASE_SERVICE_KEY", "")
 NODE_REGISTRATION_SECRET = os.getenv("NODE_REGISTRATION_SECRET", "change-me")
+ADMIN_EMAILS             = [e.strip() for e in os.getenv("ADMIN_EMAILS", "dr.uzoj@gmail.com").split(",")]
 
 supabase_admin = None
 store = None
@@ -73,7 +74,7 @@ def audit(study_id, event_type, data):
         f.write(json.dumps(row) + "\n")
 
 
-# ── Auth helper ───────────────────────────────────────────────────────────────
+# ── Auth helpers ──────────────────────────────────────────────────────────────
 def _require_user(authorization: Optional[str]):
     if not supabase_admin:
         return type("User", (), {"id": "local", "email": "local@dev"})()
@@ -89,6 +90,13 @@ def _require_user(authorization: Optional[str]):
         raise
     except Exception:
         raise HTTPException(status_code=401, detail="Token validation failed")
+
+
+def _require_admin(authorization: Optional[str]):
+    user = _require_user(authorization)
+    if not hasattr(user, "email") or user.email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
 
 
 # ── Universal data loader ─────────────────────────────────────────────────────
@@ -902,6 +910,174 @@ async def suspend_node(node_id: str, authorization: Optional[str] = Header(None)
     supabase_admin.table("fl_nodes").update({"status": "suspended"}).eq("node_id", node_id).execute()
     audit("node", "node_suspended", {"node_id": node_id})
     return {"status": "suspended", "node_id": node_id}
+
+
+# ════════════════════════════════════════════════════════════════
+# ADMIN ENDPOINTS  (require ADMIN_EMAILS membership)
+# ════════════════════════════════════════════════════════════════
+
+@app.get("/admin/stats")
+async def admin_stats(authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+
+    # Access requests
+    ar = supabase_admin.table("access_requests").select("status").execute()
+    ar_rows = ar.data or []
+
+    # Studies
+    studies_all = store.list_all() if store else list(jobs.values())
+    statuses = [s.get("status") for s in studies_all]
+
+    # Nodes
+    nodes = supabase_admin.table("fl_nodes").select("status").execute().data or []
+
+    # Users (count via auth admin API)
+    try:
+        users_resp = supabase_admin.auth.admin.list_users()
+        user_count = len(users_resp) if users_resp else 0
+    except Exception:
+        user_count = 0
+
+    return {
+        "access_requests": {
+            "total": len(ar_rows),
+            "pending": sum(1 for r in ar_rows if r["status"] == "pending"),
+            "approved": sum(1 for r in ar_rows if r["status"] == "approved"),
+            "rejected": sum(1 for r in ar_rows if r["status"] == "rejected"),
+        },
+        "studies": {
+            "total": len(studies_all),
+            "running": statuses.count("running"),
+            "completed": statuses.count("completed"),
+            "failed": statuses.count("failed"),
+        },
+        "nodes": {
+            "total": len(nodes),
+            "active": sum(1 for n in nodes if n["status"] == "active"),
+            "pending": sum(1 for n in nodes if n["status"] == "pending"),
+        },
+        "users": {"total": user_count},
+    }
+
+
+@app.get("/admin/access-requests")
+async def admin_list_access_requests(
+    status: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    query = supabase_admin.table("access_requests").select("*").order("created_at", desc=True)
+    if status:
+        query = query.eq("status", status)
+    result = query.execute()
+    return result.data or []
+
+
+@app.post("/admin/access-requests/{req_id}/approve")
+async def admin_approve_request(req_id: int, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+
+    result = supabase_admin.table("access_requests").select("*").eq("id", req_id).single().execute()
+    if not result.data:
+        raise HTTPException(404, "Request not found")
+    req = result.data
+    if req["status"] != "pending":
+        raise HTTPException(400, f"Request is already {req['status']}")
+
+    # Update request status
+    supabase_admin.table("access_requests").update({
+        "status": "approved",
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", req_id).execute()
+
+    # Invite the user via Supabase (sends magic-link email)
+    invite_error = None
+    try:
+        supabase_admin.auth.admin.invite_user_by_email(
+            req["email"],
+            {"data": {
+                "full_name": req.get("full_name", ""),
+                "institution": req.get("institution", ""),
+                "role": req.get("role", ""),
+                "account_type": "approved",
+            }}
+        )
+    except Exception as e:
+        invite_error = str(e)
+        logger.warning(f"Invite email failed for {req['email']}: {e}")
+
+    return {
+        "status": "approved",
+        "email": req["email"],
+        "invite_sent": invite_error is None,
+        "invite_error": invite_error,
+    }
+
+
+@app.post("/admin/access-requests/{req_id}/reject")
+async def admin_reject_request(
+    req_id: int,
+    body: dict = Body(default={}),
+    authorization: Optional[str] = Header(None),
+):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+
+    result = supabase_admin.table("access_requests").select("id,status").eq("id", req_id).single().execute()
+    if not result.data:
+        raise HTTPException(404, "Request not found")
+    if result.data["status"] != "pending":
+        raise HTTPException(400, f"Request is already {result.data['status']}")
+
+    supabase_admin.table("access_requests").update({
+        "status": "rejected",
+        "rejection_reason": body.get("reason", ""),
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", req_id).execute()
+    return {"status": "rejected", "id": req_id}
+
+
+@app.get("/admin/studies")
+async def admin_list_studies(authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if store:
+        try:
+            return store.list_all()
+        except Exception as e:
+            logger.warning(f"admin_list_studies failed: {e}")
+    return list(jobs.values())
+
+
+@app.get("/admin/users")
+async def admin_list_users(authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        users = supabase_admin.auth.admin.list_users()
+        return [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "full_name": (u.user_metadata or {}).get("full_name", ""),
+                "institution": (u.user_metadata or {}).get("institution", ""),
+                "role": (u.user_metadata or {}).get("role", ""),
+                "account_type": (u.user_metadata or {}).get("account_type", ""),
+                "created_at": u.created_at,
+                "last_sign_in_at": u.last_sign_in_at,
+                "email_confirmed": u.email_confirmed_at is not None,
+            }
+            for u in (users or [])
+        ]
+    except Exception as e:
+        raise HTTPException(500, f"Failed to list users: {e}")
 
 
 @app.get("/studies/{study_id}/logs")

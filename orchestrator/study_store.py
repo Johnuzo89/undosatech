@@ -121,6 +121,21 @@ class StudyStore:
         )
         return result.data or []
 
+    def list_all(self) -> list[dict]:
+        """All studies across all users, newest first. Admin use only."""
+        result = (
+            self._db.table("studies")
+            .select(
+                "id, name, model, dataset, status, current_round, total_rounds, "
+                "final_accuracy, dp_enabled, nodes, user_id, user_email, "
+                "created_at, started_at, completed_at"
+            )
+            .neq("status", "deleted")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data or []
+
     def list_running(self) -> list[dict]:
         """All studies currently in 'running' state (for crash recovery on startup)."""
         result = (
