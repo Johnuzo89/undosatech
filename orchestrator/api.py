@@ -45,8 +45,48 @@ stop_events: Dict[str, bool] = {}
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
+def _ensure_model_bucket():
+    """Create the 'models' storage bucket if it doesn't exist yet."""
+    if not supabase_admin:
+        return
+    try:
+        supabase_admin.storage.create_bucket("models", {"public": False})
+        logger.info("Supabase Storage bucket 'models' created ✓")
+    except Exception:
+        pass  # bucket already exists — that's fine
+
+
+def _upload_model_to_storage(study_id: str, local_path: Path, arch: str) -> Optional[str]:
+    """Upload .pt file to Supabase Storage. Returns storage key or None on failure."""
+    if not supabase_admin or not local_path.exists():
+        return None
+    storage_key = f"{study_id}/{arch}_final.pt"
+    try:
+        with open(local_path, "rb") as f:
+            supabase_admin.storage.from_("models").upload(
+                storage_key, f.read(),
+                file_options={"content-type": "application/octet-stream", "upsert": "true"},
+            )
+        logger.info(f"[{study_id[:8]}] Model uploaded to Supabase Storage → {storage_key}")
+        return storage_key
+    except Exception as e:
+        logger.warning(f"[{study_id[:8]}] Storage upload failed: {e}")
+        return None
+
+
+def _get_model_signed_url(storage_key: str) -> Optional[str]:
+    """Return a 1-hour signed download URL from Supabase Storage."""
+    try:
+        result = supabase_admin.storage.from_("models").create_signed_url(storage_key, 3600)
+        return result.get("signedURL") or result.get("signed_url")
+    except Exception as e:
+        logger.warning(f"Signed URL generation failed for {storage_key}: {e}")
+        return None
+
+
 @asynccontextmanager
 async def lifespan(app):
+    _ensure_model_bucket()
     if store:
         try:
             interrupted = store.list_running()
@@ -447,9 +487,10 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             log(f"Round {rnd} complete — global acc={g_acc:.3f} loss={g_loss:.4f}",
                 round_number=rnd, metrics={"accuracy": g_acc, "loss": g_loss})
 
-        # Save model
+        # Save model locally then upload to Supabase Storage for persistence
         fp = WEIGHTS_DIR / f"study_{study_id}_{arch}_final.pt"
         torch.save(node_models[0].state_dict(), str(fp))
+        model_storage_key = _upload_model_to_storage(study_id, fp, arch)
 
         model_info = {
             "study_id": study_id, "architecture": arch,
@@ -484,7 +525,8 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             try:
                 store.update(study_id,
                     interpretability=json.dumps(interp),
-                    class_names=json.dumps(class_names))
+                    class_names=json.dumps(class_names),
+                    model_storage_key=model_storage_key or "")
             except Exception:
                 pass
         else:
@@ -492,7 +534,8 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 "status": "completed",
                 "completed_at": datetime.now(timezone.utc).isoformat(),
                 "final_accuracy": final_acc, "final_loss": final_loss,
-                "model_path": str(fp), "model_info": model_info, "interpretability": interp,
+                "model_path": str(fp), "model_storage_key": model_storage_key or "",
+                "model_info": model_info, "interpretability": interp,
             })
 
         audit(study_id, "study_completed", {"final_accuracy": final_acc, "model_path": str(fp)})
@@ -666,21 +709,46 @@ def get_audit(study_id: str):
 
 @app.get("/studies/{study_id}/download")
 def download_model(study_id: str):
-    # Check in-memory first, then Supabase
+    from fastapi.responses import FileResponse, RedirectResponse
+
     job = jobs.get(study_id)
     if not job and store:
         job = store.get(study_id)
-    if not job: raise HTTPException(404, "Not found")
+    if not job:
+        raise HTTPException(404, "Study not found")
 
     status = job.get("status")
-    if status != "completed": raise HTTPException(400, "Training not complete")
+    if status != "completed":
+        raise HTTPException(400, f"Training not complete (status: {status})")
 
-    mp = job.get("model_path") or job.get("model_download_path")
-    if not mp or not Path(mp).exists(): raise HTTPException(404, "Model file not found")
-    from fastapi.responses import FileResponse
     arch = job.get("architecture") or job.get("model", "model")
-    return FileResponse(mp, media_type="application/octet-stream",
-                        filename=f"undosatech_{arch}_{study_id[:8]}.pt")
+    filename = f"undosatech_{arch}_{study_id[:8]}.pt"
+
+    # 1. Try local file (present if Railway hasn't restarted since training)
+    mp = job.get("model_path") or job.get("model_download_path")
+    if mp and Path(mp).exists():
+        return FileResponse(mp, media_type="application/octet-stream", filename=filename)
+
+    # 2. Try Supabase Storage (persists across Railway restarts)
+    if supabase_admin:
+        storage_key = job.get("model_storage_key") or f"{study_id}/{arch}_final.pt"
+        if storage_key:
+            signed_url = _get_model_signed_url(storage_key)
+            if signed_url:
+                return RedirectResponse(signed_url)
+
+        # Last resort: scan the storage bucket folder for this study
+        try:
+            files = supabase_admin.storage.from_("models").list(study_id)
+            if files:
+                key = f"{study_id}/{files[0]['name']}"
+                signed_url = _get_model_signed_url(key)
+                if signed_url:
+                    return RedirectResponse(signed_url)
+        except Exception as e:
+            logger.warning(f"Storage scan failed for {study_id}: {e}")
+
+    raise HTTPException(404, "Model file not found. The server may have restarted after training — please re-run the study to regenerate the model.")
 
 
 # ── Datasets ──────────────────────────────────────────────────────────────────
