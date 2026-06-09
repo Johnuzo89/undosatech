@@ -644,6 +644,7 @@ export default function App() {
           session={session}
           selectedNodes={selectedNodes}
           onSelectionChange={setSelectedNodes}
+          onLaunchWithNodes={() => setTab('launch')}
         />
       )}
       {tab==='studies'&&!selected&&<>
