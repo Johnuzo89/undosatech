@@ -68,6 +68,15 @@ CREATE POLICY "Authenticated users can read nodes"
 -- No direct frontend writes to fl_nodes (all writes go through the backend API)
 
 
+-- ── Model storage migration ───────────────────────────────────────────────────
+-- Run this once to add the storage key column and create the Storage bucket.
+-- The bucket must be created in Supabase Dashboard → Storage → New bucket
+--   Name: models  |  Public: OFF
+-- Or the backend will create it automatically on first startup.
+
+ALTER TABLE studies ADD COLUMN IF NOT EXISTS model_storage_key TEXT;
+
+
 -- ── access_requests ──────────────────────────────────────────────────────────
 -- Non-institutional users apply for access; admin reviews here.
 -- Frontend inserts via anon key; reads/updates go through the service key (backend).
