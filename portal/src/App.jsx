@@ -5,7 +5,7 @@ import NodeRegistry from './components/NodeRegistry'
 import MyStudies from './components/MyStudies'
 import AdminDashboard from './components/AdminDashboard'
 
-const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'dr.uzoj@gmail.com').split(',')
+const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
