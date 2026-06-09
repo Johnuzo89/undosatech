@@ -410,7 +410,7 @@ function StudyView({ studyId, onBack, session }) {
     },2000)
     return()=>clearInterval(id)
   },[studyId])
-  const rounds = job?.round_results||job?.rounds||[]
+  const rounds = (job?.round_results?.length ? job.round_results : null) || job?.rounds || []
   const safeNodes = Array.isArray(job?.nodes) ? job.nodes : []
   const chart=rounds.map(r=>({round:`R${r.round||r.round_number}`,acc:+((r.global_accuracy||r.accuracy||0)*100).toFixed(2),loss:+(r.global_loss||r.loss||0).toFixed(4)}))
   const lastRound=rounds[rounds.length-1]
