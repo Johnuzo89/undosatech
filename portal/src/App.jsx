@@ -426,10 +426,22 @@ function StudyView({ studyId, onBack, session }) {
     catch(e){addLog(`Cancel failed: ${e.message}`,'error')}
   }
   const downloadModel=async()=>{
-    const r=await fetch(`${API}/studies/${studyId}/download`)
-    if(!r.ok)return alert('Model not ready yet')
-    const blob=await r.blob();const url=URL.createObjectURL(blob)
-    const a=document.createElement('a');a.href=url;a.download=`undosatech_${job?.architecture||job?.model}_${studyId.slice(0,8)}.pt`;a.click();URL.revokeObjectURL(url)
+    try{
+      const r=await fetch(`${API}/studies/${studyId}/download`,{headers:{Authorization:`Bearer ${session?.access_token}`}})
+      if(!r.ok){
+        let msg='Download failed'
+        try{const d=await r.json();msg=d.detail||msg}catch{}
+        addLog(`⬇ Download error: ${msg}`,'error')
+        alert(`Download failed: ${msg}`)
+        return
+      }
+      // If the response is a redirect (signed URL), fetch still follows it — we get the blob
+      const blob=await r.blob()
+      if(blob.size===0){alert('Downloaded file is empty — please try again');return}
+      const url=URL.createObjectURL(blob)
+      const a=document.createElement('a');a.href=url;a.download=`undosatech_${job?.architecture||job?.model}_${studyId.slice(0,8)}.pt`;a.click();URL.revokeObjectURL(url)
+      addLog('⬇ Model downloaded successfully','success')
+    }catch(e){addLog(`⬇ Download error: ${e.message}`,'error');alert(`Download error: ${e.message}`)}
   }
   return(
     <div>
