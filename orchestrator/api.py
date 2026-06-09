@@ -853,9 +853,56 @@ async def deregister_node(node_id: str, body: dict = Body(...)):
             raise HTTPException(401, "Invalid credentials")
         supabase_admin.table("fl_nodes").update({"status": "offline"}).eq("node_id", node_id).execute()
         return {"status": "ok", "message": f"Node {node_id} marked offline"}
-    raise HTTPException(400, "Provide api_key")# ============================================================
-# APPEND THESE 4 ENDPOINTS TO THE BOTTOM OF orchestrator/api.py
-# ============================================================
+    raise HTTPException(400, "Provide api_key")
+
+
+@app.get("/nodes/{node_id}")
+async def get_node(node_id: str, authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    result = supabase_admin.table("fl_nodes").select("*").eq("node_id", node_id).single().execute()
+    if not result.data:
+        raise HTTPException(404, "Node not found")
+    heartbeats = (supabase_admin.table("fl_node_heartbeats")
+                  .select("id,latency_ms,training_active,current_study_id,recorded_at")
+                  .eq("node_id", node_id)
+                  .order("recorded_at", desc=True)
+                  .limit(20)
+                  .execute())
+    node = dict(result.data)
+    node.pop("api_key_hash", None)
+    return {**node, "connectivity": _node_connectivity(node.get("last_heartbeat")),
+            "recent_heartbeats": heartbeats.data or []}
+
+
+@app.post("/nodes/{node_id}/approve")
+async def approve_node(node_id: str, authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    result = supabase_admin.table("fl_nodes").select("status").eq("node_id", node_id).single().execute()
+    if not result.data:
+        raise HTTPException(404, "Node not found")
+    if result.data["status"] == "suspended":
+        raise HTTPException(403, "Cannot approve a suspended node")
+    supabase_admin.table("fl_nodes").update({
+        "status": "active",
+        "approved_at": datetime.now(timezone.utc).isoformat()
+    }).eq("node_id", node_id).execute()
+    audit("node", "node_approved", {"node_id": node_id})
+    return {"status": "active", "node_id": node_id, "message": "Node approved"}
+
+
+@app.post("/nodes/{node_id}/suspend")
+async def suspend_node(node_id: str, authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    supabase_admin.table("fl_nodes").update({"status": "suspended"}).eq("node_id", node_id).execute()
+    audit("node", "node_suspended", {"node_id": node_id})
+    return {"status": "suspended", "node_id": node_id}
+
 
 @app.get("/studies/{study_id}/logs")
 def get_study_logs(study_id: str, since_id: Optional[int] = Query(None), authorization: Optional[str] = Header(None)):
