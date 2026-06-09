@@ -597,8 +597,9 @@ async def create_study(
     architecture:    str = Form("resnet18"),
     num_rounds:      int = Form(5),
     local_epochs:    int = Form(2),
-    nodes:           str = Form("[]"),
+    nodes:              str = Form("[]"),
     dp_noise_multiplier: Optional[float] = Form(None),
+    invitation_message:  Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -660,6 +661,7 @@ async def create_study(
                         "invited_by": str(user.id),
                         "invited_by_email": getattr(user, "email", ""),
                         "study_name": study_name,
+                        "message": invitation_message or "",
                         "status": "pending",
                     }).execute()
                 except Exception as e:
