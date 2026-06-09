@@ -74,13 +74,16 @@ def _upload_model_to_storage(study_id: str, local_path: Path, arch: str) -> Opti
         return None
 
 
-def _get_model_signed_url(storage_key: str) -> Optional[str]:
-    """Return a 1-hour signed download URL from Supabase Storage."""
+def _download_model_from_storage(storage_key: str) -> Optional[bytes]:
+    """Download model bytes directly from Supabase Storage. Avoids redirect/CORS issues."""
     try:
-        result = supabase_admin.storage.from_("models").create_signed_url(storage_key, 3600)
-        return result.get("signedURL") or result.get("signed_url")
+        data = supabase_admin.storage.from_("models").download(storage_key)
+        if data:
+            logger.info(f"Downloaded {len(data)} bytes from storage: {storage_key}")
+            return data
+        return None
     except Exception as e:
-        logger.warning(f"Signed URL generation failed for {storage_key}: {e}")
+        logger.warning(f"Storage download failed for {storage_key}: {e}")
         return None
 
 
@@ -709,7 +712,7 @@ def get_audit(study_id: str):
 
 @app.get("/studies/{study_id}/download")
 def download_model(study_id: str):
-    from fastapi.responses import FileResponse, RedirectResponse
+    from fastapi.responses import FileResponse, Response
 
     job = jobs.get(study_id)
     if not job and store:
@@ -729,22 +732,33 @@ def download_model(study_id: str):
     if mp and Path(mp).exists():
         return FileResponse(mp, media_type="application/octet-stream", filename=filename)
 
-    # 2. Try Supabase Storage (persists across Railway restarts)
+    # 2. Try Supabase Storage (proxied through backend — avoids CORS/redirect issues)
     if supabase_admin:
-        storage_key = job.get("model_storage_key") or f"{study_id}/{arch}_final.pt"
-        if storage_key:
-            signed_url = _get_model_signed_url(storage_key)
-            if signed_url:
-                return RedirectResponse(signed_url)
+        storage_key = job.get("model_storage_key") or ""
+        convention_key = f"{study_id}/{arch}_final.pt"
+
+        # Try stored key first, then naming convention
+        for key in filter(None, [storage_key, convention_key]):
+            data = _download_model_from_storage(key)
+            if data:
+                return Response(
+                    content=data,
+                    media_type="application/octet-stream",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
 
         # Last resort: scan the storage bucket folder for this study
         try:
             files = supabase_admin.storage.from_("models").list(study_id)
             if files:
                 key = f"{study_id}/{files[0]['name']}"
-                signed_url = _get_model_signed_url(key)
-                if signed_url:
-                    return RedirectResponse(signed_url)
+                data = _download_model_from_storage(key)
+                if data:
+                    return Response(
+                        content=data,
+                        media_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                    )
         except Exception as e:
             logger.warning(f"Storage scan failed for {study_id}: {e}")
 
