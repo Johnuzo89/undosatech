@@ -264,6 +264,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const [file,setFile]=useState(null); const [drag,setDrag]=useState(false)
   const [busy,setBusy]=useState(false); const [err,setErr]=useState(null)
   const [preset,setPreset]=useState('standard')
+  const [invitationMessage,setInvitationMessage]=useState('')
   const [form,setForm]=useState({
     study_name:'', researcher_name: user?.user_metadata?.full_name || '',
     institution: user?.user_metadata?.institution || '',
@@ -272,6 +273,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const ref=useRef(); const set=(k,v)=>setForm(f=>({...f,[k]:v}))
   const applyPreset=(p)=>{setPreset(p);const f=PRESETS.find(x=>x.v===p);if(f&&f.rounds){set('num_rounds',f.rounds);set('local_epochs',f.epochs)}}
 
+  const hasRealNodes = preselectedNodes.length > 0
   const defaultNodes = [
     {node_id:'nhs-moorfields-sim',institution_name:'NHS Moorfields Eye Hospital (Simulated)',partition_id:0},
     {node_id:'uni-edinburgh-sim',institution_name:'University of Edinburgh (Simulated)',partition_id:1}
@@ -282,14 +284,15 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
     try{
       const fd=new FormData()
       Object.entries(form).forEach(([k,v])=>fd.append(k,v))
-      const nodes = preselectedNodes.length > 0
+      const nodes = hasRealNodes
         ? preselectedNodes.map((id, i) => ({node_id: id, institution_name: id, partition_id: i}))
         : defaultNodes
       fd.append('nodes', JSON.stringify(nodes))
       if(file)fd.append('file',file)
       if(form.dp_enabled){fd.append('dp_noise_multiplier', (1.0/form.dp_epsilon).toFixed(4))}
+      if(hasRealNodes && invitationMessage) fd.append('invitation_message', invitationMessage)
       const r=await fetch(`${API}/studies`,{method:'POST',body:fd,headers:{Authorization:`Bearer ${session?.access_token}`}}).then(async res=>{if(!res.ok){throw new Error(await res.text())}return res.json()})
-      onLaunched(r.study_id)
+      onLaunched(r.study_id, hasRealNodes)
     }catch(e){setErr(e.message)}finally{setBusy(false)}
   }
 
@@ -297,9 +300,23 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
     <form onSubmit={submit} style={{maxWidth:620}}>
       <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Launch a federated study</h1>
       <p style={{fontSize:13,color:'#6b7280',marginBottom:20}}>Real federated training across institution nodes. Raw data never leaves its node — only model gradients are exchanged via FedAvg.</p>
-      {preselectedNodes.length > 0 && (
-        <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:12,color:'#065f46'}}>
-          ✓ {preselectedNodes.length} node{preselectedNodes.length>1?'s':''} selected from Node Registry: {preselectedNodes.join(', ')}
+      {hasRealNodes && (
+        <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'14px 16px',marginBottom:16}}>
+          <div style={{fontWeight:600,fontSize:13,color:'#92400e',marginBottom:8}}>📨 Invitations will be sent to {preselectedNodes.length} node{preselectedNodes.length>1?'s':''}</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
+            {preselectedNodes.map(id=>(
+              <span key={id} style={{background:'#fff',border:'1px solid #fde68a',color:'#78350f',padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:500,fontFamily:'monospace'}}>{id}</span>
+            ))}
+          </div>
+          <label style={{display:'block',fontSize:11,fontWeight:600,color:'#92400e',marginBottom:5,textTransform:'uppercase',letterSpacing:'0.05em'}}>Message to node operators (optional)</label>
+          <textarea
+            value={invitationMessage}
+            onChange={e=>setInvitationMessage(e.target.value)}
+            placeholder="e.g. We are conducting a retinal imaging study and would like your institution's anonymised OCT scans to participate…"
+            rows={3}
+            style={{width:'100%',padding:'8px 10px',borderRadius:7,border:'1px solid #fde68a',fontSize:12,boxSizing:'border-box',resize:'vertical',fontFamily:'inherit',background:'#fffef7'}}
+          />
+          <div style={{fontSize:11,color:'#a16207',marginTop:6}}>Invitations are created when the study launches. Node operators can accept or decline from their dashboard.</div>
         </div>
       )}
       <div style={S.card}>
@@ -365,7 +382,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
       </div>
       {err&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'9px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
       <button type="submit" disabled={busy} style={{width:'100%',padding:13,background:busy?'#93c5fd':'#1d4ed8',color:'#fff',borderRadius:8,fontWeight:700,fontSize:15,cursor:busy?'not-allowed':'pointer',border:'none'}}>
-        {busy?'Dispatching to nodes…':'🚀 Launch federated training'}
+        {busy?'Launching…': hasRealNodes ? '🚀 Launch study & send invitations' : '🚀 Launch federated training'}
       </button>
     </form>
   )
@@ -373,9 +390,9 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
 
 // ── STUDY VIEW ────────────────────────────────────────────────────────────────
 
-function StudyView({ studyId, onBack, session, isAdmin }) {
+function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
   const [job,setJob]=useState(null); const [audit,setAudit]=useState([])
-  const [tab,setTab]=useState('live')
+  const [tab,setTab]=useState(initialTab)
   const [log,setLog]=useState([{ts:new Date().toLocaleTimeString(),msg:'Connecting to study…',type:'info'}])
   const logRef=useRef(null)
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight},[log])
@@ -594,6 +611,7 @@ export default function App() {
   const [selected,setSelected]= useState(null)
   const [online,  setOnline]  = useState(null)
   const [selectedNodes, setSelectedNodes] = useState([])
+  const [studyInitialTab, setStudyInitialTab] = useState('live')
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -657,7 +675,7 @@ export default function App() {
       </div>
     </header>
     <div style={{maxWidth:820,width:'100%',margin:'0 auto',padding:'32px 20px'}}>
-      {tab==='launch'&&!selected&&<LaunchForm onLaunched={id=>{setSelected(id);setTab('studies');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
+      {tab==='launch'&&!selected&&<LaunchForm onLaunched={(id,hadInvitations)=>{setSelected(id);setTab('studies');setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
       {tab==='nodes'&&(
         <NodeRegistry
           session={session}
@@ -672,9 +690,9 @@ export default function App() {
           <h1 style={{fontSize:22,fontWeight:700}}>Studies</h1>
           <div style={{fontSize:13,color:'#9ca3af'}}>{running>0&&<span style={{color:'#7c3aed',fontWeight:600,marginRight:12}}>⚡ {running} running</span>}{studies.length} total</div>
         </div>
-        <StudiesList studies={studies} onSelect={id=>setSelected(id)}/>
+        <StudiesList studies={studies} onSelect={id=>{setSelected(id);setStudyInitialTab('live')}}/>
       </>}
-      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>setSelected(null)} session={session} isAdmin={isAdmin}/>}
+      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f9fafb;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased} input,select,button,textarea{font-family:inherit} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}`}</style>
