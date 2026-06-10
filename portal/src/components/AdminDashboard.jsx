@@ -209,7 +209,7 @@ function AccessRequests({ session, onStatsRefresh }) {
       ) : requests.length === 0 ? (
         <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>No {filter} requests.</div>
       ) : (
-        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>{['Name', 'Email', 'Institution', 'Role', 'Research Area', 'Submitted', 'Status', 'Actions'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
@@ -301,7 +301,7 @@ function AllStudies({ studies, loading }) {
       ) : filtered.length === 0 ? (
         <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>No studies found.</div>
       ) : (
-        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>{['Study', 'User', 'Model', 'Dataset', 'Rounds', 'Status', 'Accuracy', 'Created'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
@@ -359,7 +359,7 @@ function Users({ session }) {
       {loading ? (
         <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>Loading…</div>
       ) : (
-        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>{['Name', 'Email', 'Institution', 'Role', 'Type', 'Confirmed', 'Joined', 'Last sign-in'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
