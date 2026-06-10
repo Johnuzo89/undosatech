@@ -82,7 +82,7 @@ ALTER TABLE studies ADD COLUMN IF NOT EXISTS model_storage_key TEXT;
 -- Frontend inserts via anon key; reads/updates go through the service key (backend).
 
 CREATE TABLE IF NOT EXISTS access_requests (
-    id                BIGSERIAL PRIMARY KEY,
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email             TEXT NOT NULL,
     full_name         TEXT NOT NULL,
     institution       TEXT NOT NULL,
