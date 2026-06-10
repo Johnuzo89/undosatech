@@ -595,8 +595,10 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             g_acc  = round(gc/max(gt,1), 4)
             g_loss = round(gl/max(gt,1), 4)
 
-            # Per-class accuracy
-            pc_correct=[0]*num_classes; pc_total=[0]*num_classes
+            # Per-class precision, recall (sensitivity), F1
+            pc_correct=[0]*num_classes   # TP per class
+            pc_total=[0]*num_classes     # actual positives per class (TP + FN)
+            pc_predicted=[0]*num_classes # predicted positives per class (TP + FP)
             node_models[0].eval()
             with torch.no_grad():
                 for batch in vl_eval:
@@ -605,18 +607,35 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                     try:
                         out=node_models[0](X); preds=out.argmax(1)
                         for c in range(num_classes):
-                            mask=y==c
-                            pc_correct[c]+=preds[mask].eq(y[mask]).sum().item()
-                            pc_total[c]+=mask.sum().item()
+                            mask_actual=y==c; mask_pred=preds==c
+                            pc_correct[c]  +=preds[mask_actual].eq(y[mask_actual]).sum().item()
+                            pc_total[c]    +=mask_actual.sum().item()
+                            pc_predicted[c]+=mask_pred.sum().item()
                     except: pass
+
+            def _prf(c):
+                tp=pc_correct[c]; fp=pc_predicted[c]-tp; fn=pc_total[c]-tp
+                rec = round(tp/max(pc_total[c],1),4)
+                pre = round(tp/max(pc_predicted[c],1),4)
+                f1  = round(2*pre*rec/max(pre+rec,1e-8),4)
+                return rec, pre, f1
 
             per_class=[round(pc_correct[c]/max(pc_total[c],1)*100,1) for c in range(num_classes)]
             per_class_dict = {(class_names[c] if c < len(class_names) else f"Class {c}"): per_class[c]
                               for c in range(num_classes)}
 
+            prf_data = {}
+            for c in range(num_classes):
+                rec, pre, f1 = _prf(c)
+                label = class_names[c] if c < len(class_names) else f"Class {c}"
+                prf_data[label] = {"recall": rec, "precision": pre, "f1": f1,
+                                   "support": pc_total[c]}
+
+
             summary = {
                 "round": rnd, "global_accuracy": g_acc, "global_loss": g_loss,
-                "per_class_accuracy": per_class, "node_metrics": node_metrics,
+                "per_class_accuracy": per_class, "per_class_metrics": prf_data,
+                "node_metrics": node_metrics,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             round_results.append(summary)
@@ -670,7 +689,8 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 store.update(study_id,
                     interpretability=json.dumps(interp),
                     class_names=json.dumps(class_names),
-                    model_storage_key=model_storage_key or "")
+                    model_storage_key=model_storage_key or "",
+                    per_class_metrics=json.dumps(prf_data))
             except Exception:
                 pass
         else:
@@ -678,6 +698,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 "status": "completed",
                 "completed_at": datetime.now(timezone.utc).isoformat(),
                 "final_accuracy": final_acc, "final_loss": final_loss,
+                "per_class_metrics": prf_data,
                 "model_path": str(fp), "model_storage_key": model_storage_key or "",
                 "model_info": model_info, "interpretability": interp,
             })
