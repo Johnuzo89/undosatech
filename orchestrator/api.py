@@ -169,17 +169,21 @@ def _send_approval_email(to_email: str, full_name: str, login_url: str) -> Optio
       Congratulations! Your application to join the UndosaTech Federated Research
       Platform has been <strong>accepted</strong> and your account has been created.
     </p>
-    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 28px;">
-      Click the button below to set up your password and access the platform.
+    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 20px;">
+      Click the button below to set your password. This link expires in 24 hours.
     </p>
-    <div style="text-align:center;margin-bottom:28px;">
+    <div style="text-align:center;margin-bottom:16px;">
       <a href="{login_url}"
          style="display:inline-block;background:#1d4ed8;color:#fff;font-weight:700;
                 font-size:15px;padding:13px 32px;border-radius:8px;
                 text-decoration:none;">
-        Access Your Account
+        Set Your Password
       </a>
     </div>
+    <p style="font-size:13px;color:#6b7280;text-align:center;margin:0 0 20px;">
+      Alternatively, use <strong>Continue with Google</strong> on the login page
+      if this email is linked to your Google account.
+    </p>
     <p style="font-size:13px;color:#9ca3af;margin:0;">
       If you have any questions, reply to this email or contact us at
       <a href="mailto:admin@undosatech.com" style="color:#1d4ed8;">admin@undosatech.com</a>.
@@ -1246,25 +1250,33 @@ async def admin_approve_request(req_id: str, authorization: Optional[str] = Head
     except Exception as e:
         raise HTTPException(500, f"Failed to update request: {e}")
 
-    # Create account + get login link via Supabase, then send custom acceptance email
+    # Step 1: create the Supabase auth account via invite link (silently)
+    user_metadata = {
+        "full_name": req.get("full_name", ""),
+        "institution": req.get("institution", ""),
+        "role": req.get("role", ""),
+        "account_type": "approved",
+    }
+    try:
+        supabase_admin.auth.admin.generate_link({
+            "type": "invite",
+            "email": req["email"],
+            "options": {"data": user_metadata, "redirect_to": APP_URL},
+        })
+    except Exception as e:
+        logger.warning(f"Account creation (invite) failed for {req['email']}: {e}")
+
+    # Step 2: generate a password-setup (recovery) link so the user sets their own password
     email_error = None
     try:
         link_resp = supabase_admin.auth.admin.generate_link({
-            "type": "invite",
+            "type": "recovery",
             "email": req["email"],
-            "options": {
-                "data": {
-                    "full_name": req.get("full_name", ""),
-                    "institution": req.get("institution", ""),
-                    "role": req.get("role", ""),
-                    "account_type": "approved",
-                },
-                "redirect_to": APP_URL,
-            },
+            "options": {"redirect_to": APP_URL},
         })
         login_url = getattr(getattr(link_resp, "properties", None), "action_link", None) or APP_URL
     except Exception as e:
-        logger.warning(f"generate_link failed for {req['email']}: {e}")
+        logger.warning(f"generate_link(recovery) failed for {req['email']}: {e}")
         login_url = APP_URL
 
     email_error = _send_approval_email(
