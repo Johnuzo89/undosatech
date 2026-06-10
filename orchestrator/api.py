@@ -9,6 +9,7 @@ from typing import Dict, Optional, List
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -1789,6 +1790,15 @@ def get_study_status(study_id: str, authorization: Optional[str] = Header(None))
 @app.post("/studies/{study_id}/stop")
 def stop_study(study_id: str, authorization: Optional[str] = Header(None)):
     return cancel_study(study_id, authorization=authorization)
+
+
+@app.get("/node/docker-compose.yml", response_class=PlainTextResponse)
+def get_node_compose():
+    """Serve the docker-compose.node.yml so institutions don't need GitHub access."""
+    p = Path("docker-compose.node.yml")
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Compose file not found on server.")
+    return PlainTextResponse(p.read_text(), media_type="application/yaml")
 
 
 @app.delete("/studies/{study_id}")
