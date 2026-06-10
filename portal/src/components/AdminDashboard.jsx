@@ -384,6 +384,7 @@ function Users({ session }) {
     try {
       const res = await fetch(`${API}/admin/users`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       const d = await res.json()
+      if (!res.ok) throw new Error(d.detail || `Server error ${res.status}`)
       setUsers(Array.isArray(d) ? d : [])
     } catch (e) { setMsg({ type: 'error', text: e.message }) }
     finally { setLoading(false) }
