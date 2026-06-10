@@ -380,7 +380,7 @@ function Users({ session }) {
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    setLoading(true); setMsg(null)
     try {
       const res = await fetch(`${API}/admin/users`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       const d = await res.json()
