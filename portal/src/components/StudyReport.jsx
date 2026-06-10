@@ -336,10 +336,10 @@ function getBaseline(dsKey, archKey) {
 // ── Section wrapper ───────────────────────────────────────────────────────────
 function Sec({ title, sub, children }) {
   return (
-    <div style={{ marginBottom: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '18px 22px' }}>
+    <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 16, padding: '20px 24px', marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
       <div style={{ marginBottom: 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</span>
-        {sub && <span style={{ fontSize: 11, color: '#d1d5db', marginLeft: 8 }}>{sub}</span>}
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{title}</span>
+        {sub && <span style={{ fontSize: 11, color: '#AEAEB2', marginLeft: 8 }}>{sub}</span>}
       </div>
       {children}
     </div>
@@ -542,7 +542,7 @@ export default function StudyReport({ job }) {
           sub={`${classes.length} classes · precision / recall / F1`}>
 
           {/* Disclaimer */}
-          <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#92400e', lineHeight: 1.6 }}>
+          <div style={{ background: 'rgba(255,159,10,0.08)', border: '1px solid rgba(255,159,10,0.2)', borderRadius: 12, color: '#FF9F0A', padding: '10px 14px', marginBottom: 16, fontSize: 12, lineHeight: 1.6 }}>
             <strong>Research use only.</strong> These metrics describe statistical model performance on a benchmark test set.
             They do not constitute a clinical validation, regulatory clearance, or deployment recommendation.
             Clinical deployment requires prospective validation on the target population, site-specific calibration,

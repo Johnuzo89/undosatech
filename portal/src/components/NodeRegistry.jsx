@@ -6,46 +6,52 @@ const API = import.meta.env.VITE_API_URL || "https://undosatech-production.up.ra
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const btn = (bg, text) => ({
-  padding: "9px 18px", borderRadius: 8, border: "none",
-  background: bg, color: text || (bg === "#22d3a5" ? "#0f172a" : "#e2e8f0"),
+  padding: "9px 18px", borderRadius: 10, border: "none",
+  background: bg, color: text || (bg === "#007AFF" ? "#fff" : "#1D1D1F"),
   fontWeight: 600, cursor: "pointer", transition: "opacity 0.15s", fontSize: 13,
 });
 
 const overlayStyle = {
-  position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)",
-  backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+  position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+  backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+  display: "flex", alignItems: "center",
   justifyContent: "center", zIndex: 1000, padding: 20,
 };
 
 const boxStyle = {
-  background: "linear-gradient(145deg, #0f172a, #1e293b)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 16, padding: "28px", width: "100%",
-  maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
+  background: "linear-gradient(160deg, #0d0d1a, #131426)",
+  border: "1px solid rgba(255,255,255,0.09)",
+  borderRadius: 20, padding: "28px", width: "100%",
+  maxHeight: "90vh", overflowY: "auto",
+  boxShadow: "0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)",
 };
 
-const label = { display: "block", fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 5, letterSpacing: "0.05em", textTransform: "uppercase" };
+const label = {
+  display: "block", fontSize: 11, fontWeight: 600, color: "#8E8E93",
+  marginBottom: 5, letterSpacing: "0.06em", textTransform: "uppercase",
+};
 
 const inputStyle = {
-  width: "100%", padding: "9px 12px", borderRadius: 8, boxSizing: "border-box",
-  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+  width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box",
+  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
   color: "#e2e8f0", fontSize: 13, outline: "none",
+  transition: "border-color 0.15s, box-shadow 0.15s",
 };
 
 // ── Connectivity badge ────────────────────────────────────────────────────────
 function ConnectivityBadge({ connectivity, status }) {
   const map = {
-    online:      { dot: "#22d3a5", label: "Online",      bg: "rgba(34,211,165,0.12)",  text: "#22d3a5" },
-    degraded:    { dot: "#f59e0b", label: "Degraded",    bg: "rgba(245,158,11,0.12)",  text: "#f59e0b" },
-    unreachable: { dot: "#ef4444", label: "Offline",     bg: "rgba(239,68,68,0.12)",   text: "#ef4444" },
-    pending:     { dot: "#a78bfa", label: "Pending",     bg: "rgba(167,139,250,0.12)", text: "#a78bfa" },
-    suspended:   { dot: "#6b7280", label: "Suspended",   bg: "rgba(107,114,128,0.12)", text: "#6b7280" },
+    online:      { dot: "#32D74B", label: "Online",      bg: "rgba(50,215,75,0.1)",    text: "#32D74B" },
+    degraded:    { dot: "#FF9F0A", label: "Degraded",    bg: "rgba(255,159,10,0.1)",   text: "#FF9F0A" },
+    unreachable: { dot: "#FF3B30", label: "Offline",     bg: "rgba(255,59,48,0.1)",    text: "#FF3B30" },
+    pending:     { dot: "#5856D6", label: "Pending",     bg: "rgba(88,86,214,0.1)",    text: "#5856D6" },
+    suspended:   { dot: "#8E8E93", label: "Suspended",   bg: "rgba(142,142,147,0.1)", text: "#8E8E93" },
   };
   const key = status === "pending" ? "pending" : status === "suspended" ? "suspended" : connectivity;
   const c = map[key] || map.unreachable;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 9px", borderRadius: 99, background: c.bg, color: c.text, fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-      <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.dot, boxShadow: key === "online" ? `0 0 6px ${c.dot}` : "none", animation: key === "online" ? "pulse-dot 2s ease-in-out infinite" : "none" }} />
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 99, background: c.bg, color: c.text, fontSize: 11, fontWeight: 600, letterSpacing: "0.03em" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, boxShadow: key === "online" ? `0 0 6px ${c.dot}` : "none", animation: key === "online" ? "pulse-dot 2s ease-in-out infinite" : "none", flexShrink: 0 }} />
       {c.label}
     </span>
   );
@@ -58,37 +64,38 @@ function NodeCard({ node, selected, onToggle, onDetail }) {
   return (
     <div style={{
       background: selected
-        ? "linear-gradient(135deg, rgba(34,211,165,0.07), rgba(15,23,42,0.95))"
-        : "rgba(15,23,42,0.85)",
-      border: selected ? "1px solid rgba(34,211,165,0.4)" : "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 12, padding: "18px 20px",
-      cursor: "pointer", opacity: selectable ? 1 : 0.75,
-      transition: "all 0.2s ease", position: "relative", backdropFilter: "blur(8px)",
+        ? "linear-gradient(135deg, rgba(0,122,255,0.08), rgba(13,13,26,0.95))"
+        : "rgba(13,13,26,0.7)",
+      border: selected ? "1px solid rgba(0,122,255,0.4)" : "1px solid rgba(255,255,255,0.07)",
+      borderRadius: 16, padding: "18px 20px",
+      cursor: "pointer", opacity: selectable ? 1 : 0.72,
+      transition: "all 0.2s ease", position: "relative",
+      backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
     }}>
       {/* Checkbox */}
       {selectable && (
-        <div onClick={() => onToggle(node.node_id)} style={{ position: "absolute", top: 16, right: 16, width: 18, height: 18, borderRadius: 5, border: selected ? "2px solid #22d3a5" : "2px solid rgba(255,255,255,0.2)", background: selected ? "#22d3a5" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>
-          {selected && <span style={{ color: "#0f172a", fontSize: 11, fontWeight: 700 }}>✓</span>}
+        <div onClick={() => onToggle(node.node_id)} style={{ position: "absolute", top: 16, right: 16, width: 18, height: 18, borderRadius: 5, border: selected ? "2px solid #007AFF" : "2px solid rgba(255,255,255,0.2)", background: selected ? "#007AFF" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>
+          {selected && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
         </div>
       )}
 
       {/* Header row */}
       <div onClick={() => onDetail(node)} style={{ marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
           <ConnectivityBadge connectivity={node.connectivity} status={node.status} />
-          {node.gpu_available && <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.05em", background: "rgba(168,85,247,0.15)", color: "#c084fc", padding: "2px 7px", borderRadius: 99, textTransform: "uppercase" }}>GPU</span>}
+          {node.gpu_available && <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.05em", background: "rgba(88,86,214,0.15)", color: "#5856D6", padding: "2px 8px", borderRadius: 99, textTransform: "uppercase" }}>GPU</span>}
         </div>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#e2e8f0", lineHeight: 1.3 }}>{node.institution_name}</h3>
-        <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>{node.institution_domain} · <span style={{ fontFamily: "monospace", fontSize: 11 }}>{node.node_id}</span></p>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#f0f0f5", lineHeight: 1.3, letterSpacing: "-0.01em" }}>{node.institution_name}</h3>
+        <p style={{ margin: "3px 0 0", fontSize: 12, color: "#6E6E73" }}>{node.institution_domain} · <span style={{ fontFamily: "monospace", fontSize: 11, color: "#8E8E93" }}>{node.node_id}</span></p>
       </div>
 
       {node.tags?.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-          {node.tags.map(t => <span key={t} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "rgba(99,102,241,0.12)", color: "#818cf8", fontWeight: 500 }}>{t}</span>)}
+          {node.tags.map(t => <span key={t} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "rgba(0,122,255,0.1)", color: "#007AFF", fontWeight: 500 }}>{t}</span>)}
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 11, color: "#64748b" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 11, color: "#6E6E73" }}>
         <span>📊 {node.max_samples?.toLocaleString() ?? "—"} max samples</span>
         <span>🕐 {lastSeen}</span>
         <span style={{ gridColumn: "1 / -1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -98,7 +105,7 @@ function NodeCard({ node, selected, onToggle, onDetail }) {
 
       {/* Admin badge for pending */}
       {node.status === "pending" && (
-        <div style={{ marginTop: 10, fontSize: 11, color: "#a78bfa", background: "rgba(167,139,250,0.1)", borderRadius: 6, padding: "4px 10px", display: "inline-block" }}>
+        <div style={{ marginTop: 10, fontSize: 11, color: "#5856D6", background: "rgba(88,86,214,0.1)", borderRadius: 8, padding: "5px 10px", display: "inline-block" }}>
           ⏳ Awaiting admin approval — click to review
         </div>
       )}
@@ -173,9 +180,9 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
   };
 
   const hbRow = (hb) => (
-    <div key={hb.id} style={{ display: "flex", gap: 12, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 12, color: "#94a3b8" }}>
+    <div key={hb.id} style={{ display: "flex", gap: 12, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 12, color: "#8E8E93" }}>
       <span style={{ flexShrink: 0 }}>{new Date(hb.recorded_at).toLocaleTimeString()}</span>
-      <span style={{ color: hb.training_active ? "#38bdf8" : "#64748b" }}>{hb.training_active ? "⚡ Training" : "● Idle"}</span>
+      <span style={{ color: hb.training_active ? "#007AFF" : "#6E6E73" }}>{hb.training_active ? "⚡ Training" : "● Idle"}</span>
       <span>{hb.latency_ms != null ? `${hb.latency_ms}ms` : "—"}</span>
       {hb.current_study_id && <span style={{ fontFamily: "monospace", fontSize: 10 }}>{hb.current_study_id.slice(0, 8)}</span>}
     </div>
@@ -185,21 +192,21 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
     <div style={overlayStyle} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ ...boxStyle, maxWidth: 560 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ margin: 0, color: "#e2e8f0", fontSize: 18 }}>Node Details</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", fontSize: 22, cursor: "pointer" }}>×</button>
+          <h2 style={{ margin: 0, color: "#f0f0f5", fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>Node Details</h2>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "none", color: "#8E8E93", fontSize: 18, cursor: "pointer", width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
 
-        {loading && <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Loading…</div>}
-        {error && <div style={{ color: "#fca5a5", textAlign: "center", padding: 20 }}>Error: {error}</div>}
+        {loading && <div style={{ textAlign: "center", padding: 40, color: "#6E6E73" }}>Loading…</div>}
+        {error && <div style={{ color: "#FF3B30", textAlign: "center", padding: 20 }}>Error: {error}</div>}
 
         {node && !loading && <>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
             <ConnectivityBadge connectivity={node.connectivity} status={node.status} />
-            {node.gpu_available && <span style={{ fontSize: 11, background: "rgba(168,85,247,0.15)", color: "#c084fc", padding: "2px 8px", borderRadius: 99 }}>GPU</span>}
+            {node.gpu_available && <span style={{ fontSize: 11, background: "rgba(88,86,214,0.15)", color: "#5856D6", padding: "2px 8px", borderRadius: 99 }}>GPU</span>}
           </div>
 
-          <h3 style={{ margin: "0 0 4px", color: "#e2e8f0", fontSize: 16 }}>{node.institution_name}</h3>
-          <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 13 }}>{node.institution_domain}</p>
+          <h3 style={{ margin: "0 0 4px", color: "#f0f0f5", fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>{node.institution_name}</h3>
+          <p style={{ margin: "0 0 16px", color: "#6E6E73", fontSize: 13 }}>{node.institution_domain}</p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
             {[
@@ -212,8 +219,8 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
               ["Last Heartbeat", node.last_heartbeat ? new Date(node.last_heartbeat).toLocaleString() : "Never"],
               ["Status", node.status],
             ].map(([k, v]) => (
-              <div key={k} style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "8px 12px" }}>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>{k}</div>
+              <div key={k} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, color: "#6E6E73", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{k}</div>
                 <div style={{ fontSize: 12, color: "#e2e8f0", fontFamily: k === "Node ID" || k === "Host" ? "monospace" : "inherit", wordBreak: "break-all" }}>{v}</div>
               </div>
             ))}
@@ -223,7 +230,7 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
             <div style={{ marginBottom: 16 }}>
               <div style={{ ...label, marginBottom: 8 }}>Supported Models</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {node.supported_models.map(m => <span key={m} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, background: "rgba(99,102,241,0.12)", color: "#818cf8" }}>{m}</span>)}
+                {node.supported_models.map(m => <span key={m} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, background: "rgba(0,122,255,0.1)", color: "#007AFF" }}>{m}</span>)}
               </div>
             </div>
           )}
@@ -232,10 +239,10 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
           <div style={{ marginBottom: 20 }}>
             <div style={{ ...label, marginBottom: 8 }}>Recent Heartbeats ({node.recent_heartbeats?.length ?? 0})</div>
             {node.recent_heartbeats?.length > 0
-              ? <div style={{ maxHeight: 160, overflowY: "auto", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)", padding: "4px 12px" }}>
+              ? <div style={{ maxHeight: 160, overflowY: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", padding: "4px 12px" }}>
                   {node.recent_heartbeats.map(hbRow)}
                 </div>
-              : <div style={{ fontSize: 12, color: "#64748b" }}>No heartbeats recorded yet.</div>
+              : <div style={{ fontSize: 12, color: "#6E6E73" }}>No heartbeats recorded yet.</div>
             }
           </div>
 
@@ -243,33 +250,33 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
           {invitations.length > 0 && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...label, marginBottom: 8 }}>Study Invitations ({invitations.length})</div>
-              <div style={{ borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
+              <div style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
                 {invitations.map(inv => {
                   const statusColors = {
-                    pending:   { bg: "rgba(251,191,36,0.1)",  text: "#fbbf24" },
-                    accepted:  { bg: "rgba(34,211,165,0.1)",  text: "#22d3a5" },
-                    declined:  { bg: "rgba(239,68,68,0.1)",   text: "#f87171" },
-                    withdrawn: { bg: "rgba(100,116,139,0.1)", text: "#64748b" },
+                    pending:   { bg: "rgba(255,159,10,0.1)",  text: "#FF9F0A" },
+                    accepted:  { bg: "rgba(50,215,75,0.1)",   text: "#32D74B" },
+                    declined:  { bg: "rgba(255,59,48,0.1)",   text: "#FF3B30" },
+                    withdrawn: { bg: "rgba(142,142,147,0.1)", text: "#8E8E93" },
                   };
                   const sc = statusColors[inv.status] || statusColors.pending;
                   return (
                     <div key={inv.id} style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.study_name || inv.study_id}</div>
-                        <div style={{ fontSize: 11, color: "#64748b" }}>
+                        <div style={{ fontSize: 12, color: "#f0f0f5", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.study_name || inv.study_id}</div>
+                        <div style={{ fontSize: 11, color: "#6E6E73" }}>
                           {inv.invited_by_email || "Unknown researcher"} · {new Date(inv.invited_at).toLocaleDateString()}
                         </div>
-                        {inv.message && <div style={{ fontSize: 11, color: "#64748b", fontStyle: "italic", marginTop: 2 }}>"{inv.message}"</div>}
+                        {inv.message && <div style={{ fontSize: 11, color: "#6E6E73", fontStyle: "italic", marginTop: 2 }}>"{inv.message}"</div>}
                       </div>
-                      <span style={{ padding: "2px 8px", borderRadius: 99, background: sc.bg, color: sc.text, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", flexShrink: 0 }}>{inv.status}</span>
+                      <span style={{ padding: "3px 9px", borderRadius: 99, background: sc.bg, color: sc.text, fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", flexShrink: 0 }}>{inv.status}</span>
                       {isAdmin && inv.status === "pending" && (
                         <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                           <button onClick={() => respondInvitation(inv.id, "accept")} disabled={invBusy === inv.id}
-                            style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "rgba(34,211,165,0.15)", color: "#22d3a5", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                            style={{ padding: "4px 10px", borderRadius: 7, border: "none", background: "rgba(50,215,75,0.15)", color: "#32D74B", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                             {invBusy === inv.id ? "…" : "Accept"}
                           </button>
                           <button onClick={() => respondInvitation(inv.id, "decline")} disabled={invBusy === inv.id}
-                            style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "rgba(239,68,68,0.1)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                            style={{ padding: "4px 10px", borderRadius: 7, border: "none", background: "rgba(255,59,48,0.1)", color: "#FF3B30", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                             Decline
                           </button>
                         </div>
@@ -283,27 +290,27 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
 
           {/* Admin actions */}
           {actionMsg && (
-            <div style={{ marginBottom: 12, fontSize: 13, color: actionMsg.startsWith("✓") ? "#22d3a5" : "#fca5a5", background: actionMsg.startsWith("✓") ? "rgba(34,211,165,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${actionMsg.startsWith("✓") ? "rgba(34,211,165,0.2)" : "rgba(239,68,68,0.2)"}`, borderRadius: 8, padding: "8px 12px" }}>
+            <div style={{ marginBottom: 12, fontSize: 13, color: actionMsg.startsWith("✓") ? "#32D74B" : "#FF3B30", background: actionMsg.startsWith("✓") ? "rgba(50,215,75,0.08)" : "rgba(255,59,48,0.08)", border: `1px solid ${actionMsg.startsWith("✓") ? "rgba(50,215,75,0.2)" : "rgba(255,59,48,0.2)"}`, borderRadius: 10, padding: "10px 14px" }}>
               {actionMsg}
             </div>
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {node.status === "pending" && (
-              <button onClick={() => doAction("approve")} disabled={actionBusy} style={{ ...btn("#22d3a5"), flex: 1 }}>
+              <button onClick={() => doAction("approve")} disabled={actionBusy} style={{ ...btn("#007AFF"), flex: 1 }}>
                 {actionBusy ? "…" : "✓ Approve Node"}
               </button>
             )}
             {node.status === "active" && (
-              <button onClick={() => doAction("suspend")} disabled={actionBusy} style={{ ...btn("rgba(239,68,68,0.12)", "#fca5a5"), flex: 1 }}>
+              <button onClick={() => doAction("suspend")} disabled={actionBusy} style={{ ...btn("rgba(255,59,48,0.12)", "#FF3B30"), flex: 1 }}>
                 {actionBusy ? "…" : "Suspend Node"}
               </button>
             )}
             {node.status === "suspended" && (
-              <button onClick={() => doAction("approve")} disabled={actionBusy} style={{ ...btn("rgba(34,211,165,0.12)", "#22d3a5"), flex: 1 }}>
+              <button onClick={() => doAction("approve")} disabled={actionBusy} style={{ ...btn("rgba(0,122,255,0.12)", "#007AFF"), flex: 1 }}>
                 {actionBusy ? "…" : "Reinstate Node"}
               </button>
             )}
-            <button onClick={onClose} style={{ ...btn("rgba(255,255,255,0.06)", "#94a3b8"), flex: 1 }}>Close</button>
+            <button onClick={onClose} style={{ ...btn("rgba(255,255,255,0.06)", "#8E8E93"), flex: 1 }}>Close</button>
           </div>
         </>}
       </div>
@@ -355,19 +362,19 @@ function RegisterModal({ onClose, onSuccess }) {
     <div style={overlayStyle}>
       <div style={{ ...boxStyle, maxWidth: 520 }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
-          <h2 style={{ color: "#22d3a5", margin: "0 0 6px", fontSize: 20 }}>Node Registered!</h2>
-          <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>{result.message}</p>
+          <div style={{ fontSize: 44, marginBottom: 10 }}>🎉</div>
+          <h2 style={{ color: "#32D74B", margin: "0 0 6px", fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>Node Registered!</h2>
+          <p style={{ color: "#8E8E93", fontSize: 13, margin: 0 }}>{result.message}</p>
         </div>
-        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
-          <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#fca5a5" }}>⚠️ SAVE THIS API KEY — it will never be shown again</p>
+        <div style={{ background: "rgba(255,59,48,0.08)", border: "1px solid rgba(255,59,48,0.2)", borderRadius: 12, padding: "16px 18px", marginBottom: 20 }}>
+          <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#FF3B30" }}>⚠️ SAVE THIS API KEY — it will never be shown again</p>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <code style={{ flex: 1, fontSize: 11, background: "rgba(0,0,0,0.3)", padding: "8px 10px", borderRadius: 6, color: "#fde68a", wordBreak: "break-all" }}>{result.api_key}</code>
-            <button onClick={copyKey} style={{ ...btn("#22d3a5"), flexShrink: 0, padding: "8px 14px", fontSize: 12 }}>{copiedKey ? "✓ Copied" : "Copy"}</button>
+            <code style={{ flex: 1, fontSize: 11, background: "rgba(0,0,0,0.3)", padding: "10px 12px", borderRadius: 8, color: "#FF9F0A", wordBreak: "break-all", lineHeight: 1.5 }}>{result.api_key}</code>
+            <button onClick={copyKey} style={{ ...btn("#007AFF"), flexShrink: 0, padding: "8px 14px", fontSize: 12 }}>{copiedKey ? "✓ Copied" : "Copy"}</button>
           </div>
         </div>
-        <p style={{ fontSize: 12, color: "#64748b", marginBottom: 20 }}>Set <code>NODE_API_KEY={result.api_key}</code> in your <code>.env.node</code> file.</p>
-        <button onClick={() => { onSuccess(); onClose(); }} style={{ ...btn("#22d3a5"), width: "100%" }}>Done</button>
+        <p style={{ fontSize: 12, color: "#6E6E73", marginBottom: 20 }}>Set <code style={{ color: "#8E8E93" }}>NODE_API_KEY={result.api_key}</code> in your <code style={{ color: "#8E8E93" }}>.env.node</code> file.</p>
+        <button onClick={() => { onSuccess(); onClose(); }} style={{ ...btn("#007AFF"), width: "100%" }}>Done</button>
       </div>
     </div>
   );
@@ -376,8 +383,8 @@ function RegisterModal({ onClose, onSuccess }) {
     <div style={overlayStyle}>
       <div style={{ ...boxStyle, maxWidth: 580 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ margin: 0, color: "#e2e8f0", fontSize: 18 }}>Register FL Node</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", fontSize: 20, cursor: "pointer" }}>×</button>
+          <h2 style={{ margin: 0, color: "#f0f0f5", fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>Register FL Node</h2>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "none", color: "#8E8E93", fontSize: 18, cursor: "pointer", width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
           <div style={{ gridColumn: "1 / -1" }}>{field("Node ID *", "node_id", "text", "nhs-kings-001")}</div>
@@ -393,21 +400,21 @@ function RegisterModal({ onClose, onSuccess }) {
           <label style={{ ...label, marginBottom: 8 }}>Supported Models</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {ALL_MODELS.map(m => (
-              <button key={m} onClick={() => toggleModel(m)} style={{ padding: "5px 11px", borderRadius: 99, fontSize: 11, cursor: "pointer", border: form.supported_models.includes(m) ? "1px solid #22d3a5" : "1px solid rgba(255,255,255,0.12)", background: form.supported_models.includes(m) ? "rgba(34,211,165,0.12)" : "transparent", color: form.supported_models.includes(m) ? "#22d3a5" : "#64748b", transition: "all 0.15s" }}>{m}</button>
+              <button key={m} onClick={() => toggleModel(m)} style={{ padding: "5px 12px", borderRadius: 99, fontSize: 11, cursor: "pointer", border: form.supported_models.includes(m) ? "1px solid rgba(0,122,255,0.5)" : "1px solid rgba(255,255,255,0.1)", background: form.supported_models.includes(m) ? "rgba(0,122,255,0.12)" : "transparent", color: form.supported_models.includes(m) ? "#007AFF" : "#6E6E73", transition: "all 0.15s" }}>{m}</button>
             ))}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <button onClick={() => setForm(f => ({ ...f, gpu_available: !f.gpu_available }))} style={{ width: 40, height: 22, borderRadius: 99, border: "none", background: form.gpu_available ? "#22d3a5" : "rgba(255,255,255,0.1)", cursor: "pointer", position: "relative", transition: "background 0.2s" }}>
+          <button onClick={() => setForm(f => ({ ...f, gpu_available: !f.gpu_available }))} style={{ width: 40, height: 22, borderRadius: 99, border: "none", background: form.gpu_available ? "#007AFF" : "rgba(255,255,255,0.1)", cursor: "pointer", position: "relative", transition: "background 0.2s" }}>
             <span style={{ position: "absolute", top: 3, left: form.gpu_available ? 20 : 3, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
           </button>
-          <span style={{ fontSize: 13, color: "#94a3b8" }}>GPU Available</span>
+          <span style={{ fontSize: 13, color: "#8E8E93" }}>GPU Available</span>
         </div>
         {field("Registration Secret *", "registration_secret", "password", "Provided by UndosaTech team")}
-        {error && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#fca5a5" }}>{error}</div>}
+        {error && <div style={{ background: "rgba(255,59,48,0.08)", border: "1px solid rgba(255,59,48,0.2)", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#FF3B30" }}>{error}</div>}
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ ...btn("rgba(255,255,255,0.08)", "#94a3b8"), flex: 1 }}>Cancel</button>
-          <button onClick={handleSubmit} disabled={loading} style={{ ...btn("#22d3a5"), flex: 2 }}>{loading ? "Registering…" : "Register Node"}</button>
+          <button onClick={onClose} style={{ ...btn("rgba(255,255,255,0.06)", "#8E8E93"), flex: 1 }}>Cancel</button>
+          <button onClick={handleSubmit} disabled={loading} style={{ ...btn("#007AFF"), flex: 2 }}>{loading ? "Registering…" : "Register Node"}</button>
         </div>
       </div>
     </div>
@@ -421,10 +428,10 @@ function SetupGuide() {
 
   const codeBlock = (id, code) => (
     <div style={{ position: "relative", marginBottom: 16 }}>
-      <pre style={{ margin: 0, padding: "14px 16px", background: "rgba(0,0,0,0.4)", borderRadius: 8, fontSize: 12, color: "#94a3b8", overflowX: "auto", border: "1px solid rgba(255,255,255,0.06)", lineHeight: 1.6 }}>
+      <pre style={{ margin: 0, padding: "16px 18px", background: "rgba(0,0,0,0.35)", borderRadius: 12, fontSize: 12, color: "#8E8E93", overflowX: "auto", border: "1px solid rgba(255,255,255,0.06)", lineHeight: 1.7 }}>
         <code style={{ color: "#e2e8f0" }}>{code}</code>
       </pre>
-      <button onClick={() => copy(id, code)} style={{ position: "absolute", top: 8, right: 8, ...btn("rgba(255,255,255,0.08)", "#94a3b8"), padding: "4px 10px", fontSize: 11 }}>
+      <button onClick={() => copy(id, code)} style={{ position: "absolute", top: 10, right: 10, ...btn("rgba(255,255,255,0.08)", "#8E8E93"), padding: "4px 10px", fontSize: 11 }}>
         {copied === id ? "✓ Copied" : "Copy"}
       </button>
     </div>
@@ -433,8 +440,8 @@ function SetupGuide() {
   const section = (num, title, children) => (
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(34,211,165,0.15)", color: "#22d3a5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{num}</div>
-        <h3 style={{ margin: 0, color: "#e2e8f0", fontSize: 15, fontWeight: 700 }}>{title}</h3>
+        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(0,122,255,0.15)", color: "#007AFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{num}</div>
+        <h3 style={{ margin: 0, color: "#f0f0f5", fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>{title}</h3>
       </div>
       <div style={{ paddingLeft: 38 }}>{children}</div>
     </div>
@@ -455,21 +462,21 @@ TAGS=radiology,pathology`;
   return (
     <div style={{ maxWidth: 700, animation: "fade-in 0.4s ease" }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 700, color: "#e2e8f0" }}>Institution Setup Guide</h2>
-        <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 700, color: "#f0f0f5", letterSpacing: "-0.02em" }}>Institution Setup Guide</h2>
+        <p style={{ margin: 0, fontSize: 13, color: "#6E6E73", lineHeight: 1.6 }}>
           Deploy an FL node on your institution's infrastructure. Raw patient data never leaves your server —
           only encrypted model weight updates are sent to the orchestrator.
         </p>
       </div>
 
-      <div style={{ background: "rgba(34,211,165,0.06)", border: "1px solid rgba(34,211,165,0.15)", borderRadius: 10, padding: "12px 16px", marginBottom: 28, fontSize: 12, color: "#22d3a5" }}>
+      <div style={{ background: "rgba(0,122,255,0.07)", border: "1px solid rgba(0,122,255,0.18)", borderRadius: 12, padding: "12px 16px", marginBottom: 28, fontSize: 12, color: "#007AFF", lineHeight: 1.6 }}>
         ✓ NHS (.nhs.uk) and university (.ac.uk, .edu) domains are auto-approved — no manual review needed.
         Other domains require admin approval (usually within 24 hours).
       </div>
 
       {section(1, "Prerequisites", <>
-        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Your institution's server needs:</p>
-        <ul style={{ margin: 0, paddingLeft: 18, color: "#94a3b8", fontSize: 13, lineHeight: 2 }}>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#8E8E93" }}>Your institution's server needs:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, color: "#8E8E93", fontSize: 13, lineHeight: 2 }}>
           <li>Docker Engine ≥ 20.10 and Docker Compose ≥ 2.0</li>
           <li>Outbound internet access to <code style={{ color: "#e2e8f0" }}>undosatech-production.up.railway.app</code> (HTTPS port 443)</li>
           <li>A static public IP or hostname (for the orchestrator to route training assignments)</li>
@@ -478,13 +485,13 @@ TAGS=radiology,pathology`;
       </>)}
 
       {section(2, "Create your environment file", <>
-        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Create a file called <code style={{ color: "#e2e8f0" }}>.env.node</code> (never commit to version control):</p>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#8E8E93" }}>Create a file called <code style={{ color: "#e2e8f0" }}>.env.node</code> (never commit to version control):</p>
         {codeBlock("env", envTemplate)}
-        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>Contact the UndosaTech team at <strong style={{ color: "#94a3b8" }}>contact@undosatech.com</strong> to get your <code>NODE_REGISTRATION_SECRET</code>.</p>
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#6E6E73" }}>Contact the UndosaTech team at <strong style={{ color: "#8E8E93" }}>contact@undosatech.com</strong> to get your <code>NODE_REGISTRATION_SECRET</code>.</p>
       </>)}
 
       {section(3, "Download and launch the Docker container", <>
-        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Download the compose file directly from UndosaTech and start the node:</p>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#8E8E93" }}>Download the compose file directly from UndosaTech and start the node:</p>
         {codeBlock("pull", `# Download the compose file
 curl -O https://app.undosatech.com/docker-compose.node.yml
 
@@ -498,15 +505,15 @@ docker compose -f docker-compose.node.yml logs -f
 
 # Check the container is healthy
 docker ps --filter name=undosatech-fl-node`)}
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#94a3b8" }}>
-          Once registered, the node appears in the <strong style={{ color: "#e2e8f0" }}>Nodes</strong> tab within 30 seconds.
-          If your domain requires manual approval, status shows <span style={{ color: "#a78bfa" }}>Pending</span> until an admin approves it.
+        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#8E8E93" }}>
+          Once registered, the node appears in the <strong style={{ color: "#f0f0f5" }}>Nodes</strong> tab within 30 seconds.
+          If your domain requires manual approval, status shows <span style={{ color: "#5856D6" }}>Pending</span> until an admin approves it.
         </p>
       </>)}
 
       {section(5, "Security notes", <>
-        <ul style={{ margin: 0, paddingLeft: 18, color: "#94a3b8", fontSize: 13, lineHeight: 2 }}>
-          <li><strong style={{ color: "#e2e8f0" }}>Raw data never leaves your server.</strong> Only model weight updates travel to the orchestrator.</li>
+        <ul style={{ margin: 0, paddingLeft: 18, color: "#8E8E93", fontSize: 13, lineHeight: 2 }}>
+          <li><strong style={{ color: "#f0f0f5" }}>Raw data never leaves your server.</strong> Only model weight updates travel to the orchestrator.</li>
           <li>The API key generated on first registration is stored locally in a Docker volume — never transmitted again.</li>
           <li>The <code style={{ color: "#e2e8f0" }}>NODE_REGISTRATION_SECRET</code> authenticates the registration handshake only; rotate it via Railway env vars if compromised.</li>
           <li>Mount your local patient data directory as a read-only volume: <code style={{ color: "#e2e8f0" }}>/path/to/data:/data:ro</code></li>
@@ -514,10 +521,10 @@ docker ps --filter name=undosatech-fl-node`)}
         </ul>
       </>)}
 
-      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "14px 18px", fontSize: 12, color: "#64748b" }}>
-        <strong style={{ color: "#94a3b8" }}>Need help?</strong> Email{" "}
-        <span style={{ color: "#818cf8" }}>contact@undosatech.com</span> or{" "}
-        <span style={{ color: "#818cf8" }}>support@undosatech.com</span>. Include your institution domain and node ID in the subject line.
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 18px", fontSize: 12, color: "#6E6E73" }}>
+        <strong style={{ color: "#8E8E93" }}>Need help?</strong> Email{" "}
+        <span style={{ color: "#007AFF" }}>contact@undosatech.com</span> or{" "}
+        <span style={{ color: "#007AFF" }}>support@undosatech.com</span>. Include your institution domain and node ID in the subject line.
       </div>
     </div>
   );
@@ -579,7 +586,7 @@ export default function NodeRegistry({ session, selectedNodes, onSelectionChange
   const pendingCount = nodes.filter(n => n.status === "pending").length;
 
   const tabBtn = (v, label) => (
-    <button onClick={() => setView(v)} style={{ padding: "7px 16px", borderRadius: 8, fontSize: 13, fontWeight: view === v ? 600 : 400, cursor: "pointer", border: "none", background: view === v ? "#22d3a5" : "rgba(255,255,255,0.06)", color: view === v ? "#0f172a" : "#94a3b8" }}>
+    <button onClick={() => setView(v)} style={{ padding: "7px 16px", borderRadius: 99, fontSize: 13, fontWeight: view === v ? 600 : 500, cursor: "pointer", border: "none", background: view === v ? "#007AFF" : "rgba(255,255,255,0.06)", color: view === v ? "#fff" : "#8E8E93", transition: "all 0.15s" }}>
       {label}
     </button>
   );
@@ -594,8 +601,8 @@ export default function NodeRegistry({ session, selectedNodes, onSelectionChange
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, animation: "fade-in 0.4s ease", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700, color: "#e2e8f0" }}>Node Registry</h2>
-          <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700, color: "#f0f0f5", letterSpacing: "-0.02em" }}>Node Registry</h2>
+          <p style={{ margin: 0, fontSize: 13, color: "#6E6E73" }}>
             {nodes.length} registered · {onlineCount} online
             {lastRefresh && ` · Updated ${lastRefresh.toLocaleTimeString()}`}
           </p>
@@ -603,8 +610,8 @@ export default function NodeRegistry({ session, selectedNodes, onSelectionChange
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {tabBtn("nodes", "⬡ Nodes")}
           {tabBtn("guide", "📖 Setup Guide")}
-          <button onClick={fetchNodes} style={{ ...btn("rgba(255,255,255,0.06)", "#94a3b8"), fontSize: 12 }}>↻ Refresh</button>
-          <button onClick={() => setShowRegister(true)} style={{ ...btn("#22d3a5"), fontSize: 13 }}>+ Register Node</button>
+          <button onClick={fetchNodes} style={{ ...btn("rgba(255,255,255,0.06)", "#8E8E93"), fontSize: 12 }}>↻ Refresh</button>
+          <button onClick={() => setShowRegister(true)} style={{ ...btn("#007AFF"), fontSize: 13 }}>+ Register Node</button>
         </div>
       </div>
 
@@ -614,25 +621,25 @@ export default function NodeRegistry({ session, selectedNodes, onSelectionChange
         {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20, animation: "fade-in 0.5s ease 0.05s both" }}>
           {[
-            { label: "Total Nodes",      value: nodes.length,        color: "#e2e8f0" },
-            { label: "Online",           value: onlineCount,          color: "#22d3a5" },
-            { label: "Pending Approval", value: pendingCount,         color: "#a78bfa" },
-            { label: "Selected",         value: selectedNodes.length, color: "#38bdf8" },
+            { label: "Total Nodes",      value: nodes.length,        color: "#f0f0f5" },
+            { label: "Online",           value: onlineCount,          color: "#32D74B" },
+            { label: "Pending Approval", value: pendingCount,         color: "#5856D6" },
+            { label: "Selected",         value: selectedNodes.length, color: "#007AFF" },
           ].map(s => (
-            <div key={s.label} style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "12px 16px", backdropFilter: "blur(8px)" }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{s.label}</div>
+            <div key={s.label} style={{ background: "rgba(13,13,26,0.7)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, padding: "14px 16px", backdropFilter: "blur(8px)" }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: s.color, letterSpacing: "-0.02em" }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "#6E6E73", marginTop: 3, fontWeight: 500 }}>{s.label}</div>
             </div>
           ))}
         </div>
 
         {/* Launch CTA */}
         {selectedNodes.length > 0 && (
-          <div style={{ background: "rgba(34,211,165,0.07)", border: "1px solid rgba(34,211,165,0.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", animation: "fade-in 0.3s ease", flexWrap: "wrap", gap: 10 }}>
-            <span style={{ fontSize: 13, color: "#22d3a5" }}>✓ {selectedNodes.length} node{selectedNodes.length > 1 ? "s" : ""} selected for your study</span>
+          <div style={{ background: "rgba(0,122,255,0.07)", border: "1px solid rgba(0,122,255,0.2)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", animation: "fade-in 0.3s ease", flexWrap: "wrap", gap: 10 }}>
+            <span style={{ fontSize: 13, color: "#007AFF", fontWeight: 500 }}>✓ {selectedNodes.length} node{selectedNodes.length > 1 ? "s" : ""} selected for your study</span>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => onSelectionChange([])} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 12 }}>Clear</button>
-              <button onClick={onLaunchWithNodes} style={{ ...btn("#22d3a5"), padding: "7px 16px", fontSize: 13 }}>
+              <button onClick={() => onSelectionChange([])} style={{ background: "none", border: "none", color: "#6E6E73", cursor: "pointer", fontSize: 12 }}>Clear</button>
+              <button onClick={onLaunchWithNodes} style={{ ...btn("#007AFF"), padding: "7px 16px", fontSize: 13 }}>
                 🚀 Launch study with these nodes →
               </button>
             </div>
@@ -649,30 +656,30 @@ export default function NodeRegistry({ session, selectedNodes, onSelectionChange
             style={{ ...inputStyle, flex: 1, minWidth: 180 }}
           />
           {["all", "online", "pending"].map(f => (
-            <button key={f} onClick={() => setFilter(f)} style={{ padding: "8px 16px", borderRadius: 8, fontSize: 12, cursor: "pointer", border: filter === f ? "1px solid rgba(34,211,165,0.4)" : "1px solid rgba(255,255,255,0.08)", background: filter === f ? "rgba(34,211,165,0.1)" : "rgba(255,255,255,0.03)", color: filter === f ? "#22d3a5" : "#64748b", textTransform: "capitalize" }}>{f}</button>
+            <button key={f} onClick={() => setFilter(f)} style={{ padding: "8px 16px", borderRadius: 99, fontSize: 12, cursor: "pointer", border: filter === f ? "1px solid rgba(0,122,255,0.4)" : "1px solid rgba(255,255,255,0.08)", background: filter === f ? "rgba(0,122,255,0.1)" : "rgba(255,255,255,0.03)", color: filter === f ? "#007AFF" : "#6E6E73", textTransform: "capitalize", fontWeight: filter === f ? 600 : 400, transition: "all 0.15s" }}>{f}</button>
           ))}
         </div>
 
         {/* Node grid */}
         {loading ? (
-          <div style={{ textAlign: "center", padding: "60px 0", color: "#64748b" }}>
+          <div style={{ textAlign: "center", padding: "60px 0", color: "#6E6E73" }}>
             <div style={{ fontSize: 28, marginBottom: 12, animation: "pulse-dot 1.5s ease-in-out infinite" }}>⬡</div>
             Loading nodes…
           </div>
         ) : error ? (
-          <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "20px", textAlign: "center", color: "#fca5a5", fontSize: 13 }}>
+          <div style={{ background: "rgba(255,59,48,0.08)", border: "1px solid rgba(255,59,48,0.2)", borderRadius: 12, padding: "20px", textAlign: "center", color: "#FF3B30", fontSize: 13 }}>
             Failed to load nodes: {error}
             <br />
-            <button onClick={fetchNodes} style={{ ...btn("rgba(239,68,68,0.15)", "#fca5a5"), marginTop: 12, fontSize: 12 }}>Retry</button>
+            <button onClick={fetchNodes} style={{ ...btn("rgba(255,59,48,0.12)", "#FF3B30"), marginTop: 12, fontSize: 12 }}>Retry</button>
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 0", color: "#64748b" }}>
+          <div style={{ textAlign: "center", padding: "60px 0", color: "#6E6E73" }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>⬡</div>
             {search ? `No nodes matching "${search}"` : nodes.length === 0 ? (
               <>
-                <div style={{ fontSize: 15, fontWeight: 600, color: "#94a3b8", marginBottom: 8 }}>No nodes registered yet</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "#8E8E93", marginBottom: 8 }}>No nodes registered yet</div>
                 <div style={{ fontSize: 13, marginBottom: 16 }}>Institutions run a Docker container on-premise to join your research network.</div>
-                <button onClick={() => setView("guide")} style={{ ...btn("rgba(34,211,165,0.12)", "#22d3a5") }}>View Setup Guide →</button>
+                <button onClick={() => setView("guide")} style={{ ...btn("rgba(0,122,255,0.12)", "#007AFF") }}>View Setup Guide →</button>
               </>
             ) : "No nodes match this filter"}
           </div>
@@ -692,7 +699,7 @@ export default function NodeRegistry({ session, selectedNodes, onSelectionChange
 
         {/* Pending notice */}
         {pendingCount > 0 && (
-          <div style={{ marginTop: 20, background: "rgba(167,139,250,0.07)", border: "1px solid rgba(167,139,250,0.2)", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#a78bfa" }}>
+          <div style={{ marginTop: 20, background: "rgba(88,86,214,0.07)", border: "1px solid rgba(88,86,214,0.2)", borderRadius: 12, padding: "12px 16px", fontSize: 12, color: "#5856D6" }}>
             ⏳ {pendingCount} node{pendingCount > 1 ? "s are" : " is"} awaiting approval. Click a pending node to approve it.
             NHS (.nhs.uk) and academic (.ac.uk, .edu) domains are auto-approved on registration.
           </div>
