@@ -134,6 +134,62 @@ def audit(study_id, event_type, data):
         f.write(json.dumps(row) + "\n")
 
 
+# ── Institutional domain detection ───────────────────────────────────────────
+_INSTITUTIONAL_PATTERNS = [
+    # UK / Ireland
+    ".ac.uk", ".nhs.uk", ".nhs.net", ".gov.uk", ".hse.ie",
+    # USA / global .edu — also catches .edu.sg, .edu.cn, .edu.br, etc.
+    ".edu",
+    # Australia / NZ / Pacific
+    ".edu.au", ".ac.nz", ".ac.fj", ".ac.pg",
+    # Europe — countries using .ac.XX
+    ".ac.at", ".ac.be", ".ac.cy",
+    # European institutional prefixes (domain starts with)
+    "uni-", "tu-", "fh-", "hs-", "univ-",
+    # Switzerland
+    "eth.ch", "epfl.ch", "uzh.ch", "unibe.ch", "unil.ch", "unige.ch", "unibas.ch",
+    # Germany
+    "rwth-aachen.de", "fu-berlin.de", "hu-berlin.de", "lmu.de", "tum.de",
+    "charite.de", "dkfz.de", "embl.de", "mpg.de",
+    # France
+    "inserm.fr", "cnrs.fr", "inria.fr", "pasteur.fr",
+    "sorbonne-universite.fr", "u-paris.fr", "ens.fr",
+    # Netherlands
+    "uva.nl", "vu.nl", "tudelft.nl", "leiden.nl", "rug.nl", "uu.nl",
+    "utwente.nl", "tue.nl", "radboudumc.nl", "erasmusmc.nl",
+    "umcutrecht.nl", "lumc.nl", "nki.nl", "umcg.nl",
+    # Scandinavia
+    "uio.no", "ntnu.no", "uib.no", "ku.dk", "dtu.dk", "au.dk",
+    "su.se", "kth.se", "ki.se", "chalmers.se", "gu.se",
+    "aalto.fi", "helsinki.fi", "oulu.fi",
+    # Belgium
+    "kuleuven.be", "ugent.be", "vub.be", "uliege.be", "ulb.be",
+    # Spain
+    "upm.es", "uam.es", "ucm.es", "upv.es",
+    # Italy
+    "unibo.it", "polimi.it", "polito.it", "uniroma1.it",
+    # Canada (no unified .edu.ca)
+    "utoronto.ca", "ubc.ca", "mcgill.ca", "ualberta.ca", "uwaterloo.ca",
+    "queensu.ca", "dal.ca", "uottawa.ca", "umontreal.ca", "laval.ca",
+    "ucalgary.ca", "usask.ca", "umanitoba.ca", "unb.ca", "mun.ca",
+    "yorku.ca", "carleton.ca", "sfu.ca", "uvic.ca", "concordia.ca",
+    "torontomu.ca", "uqam.ca", "gc.ca",
+    # Asia — .ac.XX countries
+    ".ac.jp", ".ac.in", ".ac.id", ".ac.il", ".ac.ir",
+    ".ac.kr", ".ac.th", ".ac.ae", ".ac.lk",
+    # Africa — .ac.XX countries
+    ".ac.za", ".ac.ke", ".ac.ug", ".ac.tz", ".ac.rw", ".ac.zw",
+    ".ac.zm", ".ac.mw", ".ac.gh", ".ac.bw", ".ac.na", ".ac.mu",
+    # Global health & research orgs
+    ".nih.gov", ".cdc.gov", "who.int", "wellcome.org",
+]
+
+def _is_institutional_domain(domain: str) -> bool:
+    """Return True if domain belongs to an academic, healthcare, or research institution."""
+    d = domain.lower().lstrip("@")
+    return any(d.endswith(p) or d == p.lstrip(".") or p in d for p in _INSTITUTIONAL_PATTERNS)
+
+
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 def _require_user(authorization: Optional[str]):
     if not supabase_admin:
@@ -917,8 +973,8 @@ async def register_node(req: NodeRegistrationRequest):
             raise HTTPException(403, "Node has been suspended")
         raise HTTPException(409, f"node_id '{req.node_id}' already registered")
 
-    domain = req.institution_domain.lower()
-    auto_approved = any(domain.endswith(s) for s in [".nhs.uk",".ac.uk",".edu",".gov.uk",".edu.au",".ac.nz"])
+    domain = req.institution_domain.lower().lstrip("@")
+    auto_approved = _is_institutional_domain(domain)
     initial_status = "active" if auto_approved else "pending"
 
     api_key = secrets.token_urlsafe(48)
