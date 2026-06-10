@@ -526,12 +526,17 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const [busy,setBusy]=useState(false); const [err,setErr]=useState(null)
   const [preset,setPreset]=useState('standard')
   const [invitationMessage,setInvitationMessage]=useState('')
+  const [classDescs,setClassDescs]=useState([{name:'',desc:''}])
   const [form,setForm]=useState({
     study_name:'', researcher_name: user?.user_metadata?.full_name || '',
     institution: user?.user_metadata?.institution || '',
     dataset:'octmnist', architecture:'resnet18', num_rounds:5, local_epochs:2, dp_enabled:false, dp_epsilon:1.0
   })
   const ref=useRef(); const set=(k,v)=>setForm(f=>({...f,[k]:v}))
+
+  const addClassDesc  = () => setClassDescs(d=>[...d,{name:'',desc:''}])
+  const removeClassDesc = i => setClassDescs(d=>d.filter((_,j)=>j!==i))
+  const updateClassDesc = (i,k,v) => setClassDescs(d=>d.map((r,j)=>j===i?{...r,[k]:v}:r))
   const applyPreset=(p)=>{setPreset(p);const f=PRESETS.find(x=>x.v===p);if(f&&f.rounds){set('num_rounds',f.rounds);set('local_epochs',f.epochs)}}
 
   const hasRealNodes = preselectedNodes.length > 0
@@ -552,6 +557,13 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
       if(file)fd.append('file',file)
       if(form.dp_enabled){fd.append('dp_noise_multiplier', (1.0/form.dp_epsilon).toFixed(4))}
       if(hasRealNodes && invitationMessage) fd.append('invitation_message', invitationMessage)
+      if(form.dataset==='upload'){
+        const filled = classDescs.filter(c=>c.name.trim())
+        if(filled.length>0){
+          const obj={}; filled.forEach(c=>{obj[c.name.trim()]=c.desc.trim()})
+          fd.append('class_descriptions', JSON.stringify(obj))
+        }
+      }
       const r=await fetch(`${API}/studies`,{method:'POST',body:fd,headers:{Authorization:`Bearer ${session?.access_token}`}}).then(async res=>{if(!res.ok){throw new Error(await res.text())}return res.json()})
       onLaunched(r.study_id, hasRealNodes)
     }catch(e){setErr(e.message)}finally{setBusy(false)}
@@ -611,6 +623,41 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
               {file&&<button type="button" onClick={e=>{e.stopPropagation();setFile(null)}} style={{marginTop:8,fontSize:12,color:'#dc2626',background:'none',border:'none',cursor:'pointer'}}>Remove</button>}
             </div>
             <input ref={ref} type="file" style={{display:'none'}} onChange={e=>setFile(e.target.files[0])}/>
+          </div>
+        )}
+        {form.dataset==='upload'&&(
+          <div style={{marginTop:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>Class descriptions</div>
+                <div style={{fontSize:11,color:'#9ca3af',marginTop:1}}>Describe each class so the report can interpret results. Class names must match your folder names (ZIP) or label values (CSV/NPZ).</div>
+              </div>
+              <button type="button" onClick={addClassDesc}
+                style={{padding:'5px 12px',borderRadius:7,border:'1px solid #d1d5db',background:'#fff',fontSize:12,cursor:'pointer',fontWeight:500,whiteSpace:'nowrap'}}>
+                + Add class
+              </button>
+            </div>
+            {classDescs.map((c,i)=>(
+              <div key={i} style={{display:'grid',gridTemplateColumns:'160px 1fr 28px',gap:8,marginBottom:8,alignItems:'start'}}>
+                <input
+                  placeholder={`Class name (e.g. Melanoma)`}
+                  value={c.name}
+                  onChange={e=>updateClassDesc(i,'name',e.target.value)}
+                  style={{...S.inp,marginBottom:0,fontSize:12}}
+                />
+                <input
+                  placeholder="Description, clinical significance, risk level…"
+                  value={c.desc}
+                  onChange={e=>updateClassDesc(i,'desc',e.target.value)}
+                  style={{...S.inp,marginBottom:0,fontSize:12}}
+                />
+                <button type="button" onClick={()=>removeClassDesc(i)}
+                  disabled={classDescs.length===1}
+                  style={{height:34,borderRadius:7,border:'1px solid #fecaca',background:'#fff',color:'#dc2626',cursor:classDescs.length===1?'not-allowed':'pointer',fontSize:14,opacity:classDescs.length===1?0.3:1}}>
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
