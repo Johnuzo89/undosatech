@@ -751,11 +751,18 @@ def get_audit(study_id: str):
 def download_model(study_id: str):
     from fastapi.responses import FileResponse, Response
 
-    job = jobs.get(study_id)
-    if not job and store:
+    if store:
         job = store.get(study_id)
+    else:
+        job = jobs.get(study_id)
     if not job:
         raise HTTPException(404, "Study not found")
+    # Merge in-memory fields (model_path, model_storage_key) that may only live in jobs dict
+    if store and jobs.get(study_id):
+        mem = jobs[study_id]
+        for key in ("model_path", "model_download_path", "model_storage_key", "architecture"):
+            if mem.get(key) and not job.get(key):
+                job[key] = mem[key]
 
     status = job.get("status")
     if status != "completed":
