@@ -1178,7 +1178,6 @@ async def admin_approve_request(req_id: str, authorization: Optional[str] = Head
     try:
         supabase_admin.table("access_requests").update({
             "status": "approved",
-            "reviewed_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", req_id).execute()
     except Exception as e:
         raise HTTPException(500, f"Failed to update request: {e}")
@@ -1230,7 +1229,6 @@ async def admin_reject_request(
         supabase_admin.table("access_requests").update({
             "status": "rejected",
             "rejection_reason": body.get("reason", ""),
-            "reviewed_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", req_id).execute()
     except Exception as e:
         raise HTTPException(500, f"Failed to update request: {e}")
