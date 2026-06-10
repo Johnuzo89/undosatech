@@ -348,19 +348,76 @@ function AllStudies({ studies, loading }) {
   )
 }
 
+// ── Delete confirm modal ──────────────────────────────────────────────────────
+function DeleteUserModal({ user, onConfirm, onCancel }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 420, boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 17, color: '#dc2626' }}>Delete account permanently?</h3>
+        <p style={{ margin: '0 0 6px', fontSize: 14, color: '#374151' }}>
+          This will <strong>permanently delete</strong> the Supabase account for:
+        </p>
+        <p style={{ margin: '0 0 20px', fontSize: 14, fontWeight: 600, color: '#111827' }}>{user.email}</p>
+        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>
+          Their studies and data remain but they will not be able to log in. This cannot be undone.
+        </p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onCancel} style={{ ...btn('#f3f4f6', '#374151'), flex: 1 }}>Cancel</button>
+          <button onClick={onConfirm} style={{ ...btn('#dc2626'), flex: 1 }}>Delete permanently</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Users tab ─────────────────────────────────────────────────────────────────
 function Users({ session }) {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [error, setError] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const [busy, setBusy] = useState({})
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
-  useEffect(() => {
-    fetch(`${API}/admin/users`, { headers: { Authorization: `Bearer ${session.access_token}` } })
-      .then(r => r.json())
-      .then(d => { setUsers(Array.isArray(d) ? d : []); setLoading(false) })
-      .catch(e => { setError(e.message); setLoading(false) })
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${API}/admin/users`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+      const d = await res.json()
+      setUsers(Array.isArray(d) ? d : [])
+    } catch (e) { setMsg({ type: 'error', text: e.message }) }
+    finally { setLoading(false) }
   }, [session])
+
+  useEffect(() => { load() }, [load])
+
+  const act = async (userId, action) => {
+    setBusy(b => ({ ...b, [userId]: action }))
+    setMsg(null)
+    const method = action === 'delete' ? 'DELETE' : 'POST'
+    const url = action === 'delete'
+      ? `${API}/admin/users/${userId}`
+      : `${API}/admin/users/${userId}/${action}`
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.detail || 'Action failed')
+      setMsg({ type: 'success', text: action === 'delete' ? 'Account deleted.' : action === 'deactivate' ? 'Account deactivated.' : 'Account reactivated.' })
+      await load()
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message })
+    } finally {
+      setBusy(b => ({ ...b, [userId]: null }))
+    }
+  }
+
+  const handleDelete = async (user) => {
+    setDeleteTarget(null)
+    await act(user.id, 'delete')
+  }
 
   const filtered = users.filter(u => {
     if (!search) return true
@@ -374,20 +431,25 @@ function Users({ session }) {
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
         <input placeholder="Search by name, email, institution…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...S.inp, maxWidth: 300 }} />
+        <button onClick={load} style={{ ...btn('#f3f4f6', '#6b7280', true) }}>↻ Refresh</button>
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af' }}>{filtered.length} users</span>
       </div>
-      {error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13 }}>{error}</div>}
+
+      {msg && <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13,
+        background: msg.type === 'success' ? '#d1fae5' : '#fee2e2',
+        color:      msg.type === 'success' ? '#065f46' : '#991b1b' }}>{msg.text}</div>}
+
       {loading ? (
         <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>Loading…</div>
       ) : (
         <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>{['Name', 'Email', 'Institution', 'Role', 'Type', 'Confirmed', 'Joined', 'Last sign-in'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+              <tr>{['Name', 'Email', 'Institution', 'Role', 'Type', 'Status', 'Joined', 'Last sign-in', 'Actions'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {filtered.map(u => (
-                <tr key={u.id}>
+                <tr key={u.id} style={{ background: u.banned ? '#fff7f7' : '#fff' }}>
                   <td style={{ ...S.td, fontWeight: 600 }}>{u.full_name || '—'}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{u.email}</td>
                   <td style={{ ...S.td, fontSize: 12, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.institution || '—'}</td>
@@ -397,16 +459,49 @@ function Users({ session }) {
                       {u.account_type || 'institutional'}
                     </span>
                   </td>
-                  <td style={{ ...S.td, textAlign: 'center' }}>
-                    <span style={{ fontSize: 16 }}>{u.email_confirmed ? '✓' : '○'}</span>
+                  <td style={S.td}>
+                    {u.banned
+                      ? <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>banned</span>
+                      : <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>active</span>
+                    }
                   </td>
                   <td style={{ ...S.td, fontSize: 12, color: '#9ca3af' }}>{ago(u.created_at)}</td>
                   <td style={{ ...S.td, fontSize: 12, color: '#9ca3af' }}>{ago(u.last_sign_in_at)}</td>
+                  <td style={S.td}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {u.banned ? (
+                        <button
+                          onClick={() => act(u.id, 'reactivate')}
+                          disabled={!!busy[u.id]}
+                          style={{ ...btn('#d1fae5', '#065f46', true) }}
+                        >{busy[u.id] === 'reactivate' ? '…' : '✓ Reactivate'}</button>
+                      ) : (
+                        <button
+                          onClick={() => act(u.id, 'deactivate')}
+                          disabled={!!busy[u.id]}
+                          style={{ ...btn('#fef3c7', '#92400e', true) }}
+                        >{busy[u.id] === 'deactivate' ? '…' : '⊘ Deactivate'}</button>
+                      )}
+                      <button
+                        onClick={() => setDeleteTarget(u)}
+                        disabled={!!busy[u.id]}
+                        style={{ ...btn('#fee2e2', '#991b1b', true) }}
+                      >{busy[u.id] === 'delete' ? '…' : '✕ Delete'}</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteUserModal
+          user={deleteTarget}
+          onConfirm={() => handleDelete(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
     </div>
   )
