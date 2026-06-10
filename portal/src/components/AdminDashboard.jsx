@@ -178,7 +178,13 @@ function AccessRequests({ session, onStatsRefresh }) {
         body: JSON.stringify(body),
       })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.detail || 'Failed')
+      if (!res.ok) {
+        const detail = d?.detail
+        const msg = typeof detail === 'string' ? detail
+          : Array.isArray(detail) ? detail.map(e => e.msg ?? JSON.stringify(e)).join('; ')
+          : detail ? JSON.stringify(detail) : 'Request failed'
+        throw new Error(msg)
+      }
       if (action === 'approve') {
         setMsg({ type: 'success', text: `✓ Approved ${d.email}${d.invite_sent ? ' — invite email sent' : ' (invite email failed — check logs)'}` })
       } else {

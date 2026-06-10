@@ -1109,18 +1109,23 @@ async def admin_approve_request(req_id: int, authorization: Optional[str] = Head
     if not supabase_admin:
         raise HTTPException(503, "Requires Supabase")
 
-    result = supabase_admin.table("access_requests").select("*").eq("id", req_id).single().execute()
+    try:
+        result = supabase_admin.table("access_requests").select("*").eq("id", req_id).single().execute()
+    except Exception as e:
+        raise HTTPException(404, f"Request not found: {e}")
     if not result.data:
         raise HTTPException(404, "Request not found")
     req = result.data
     if req["status"] != "pending":
         raise HTTPException(400, f"Request is already {req['status']}")
 
-    # Update request status
-    supabase_admin.table("access_requests").update({
-        "status": "approved",
-        "reviewed_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", req_id).execute()
+    try:
+        supabase_admin.table("access_requests").update({
+            "status": "approved",
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", req_id).execute()
+    except Exception as e:
+        raise HTTPException(500, f"Failed to update request: {e}")
 
     # Invite the user via Supabase (sends magic-link email)
     invite_error = None
@@ -1156,17 +1161,23 @@ async def admin_reject_request(
     if not supabase_admin:
         raise HTTPException(503, "Requires Supabase")
 
-    result = supabase_admin.table("access_requests").select("id,status").eq("id", req_id).single().execute()
+    try:
+        result = supabase_admin.table("access_requests").select("id,status").eq("id", req_id).single().execute()
+    except Exception as e:
+        raise HTTPException(404, f"Request not found: {e}")
     if not result.data:
         raise HTTPException(404, "Request not found")
     if result.data["status"] != "pending":
         raise HTTPException(400, f"Request is already {result.data['status']}")
 
-    supabase_admin.table("access_requests").update({
-        "status": "rejected",
-        "rejection_reason": body.get("reason", ""),
-        "reviewed_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", req_id).execute()
+    try:
+        supabase_admin.table("access_requests").update({
+            "status": "rejected",
+            "rejection_reason": body.get("reason", ""),
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", req_id).execute()
+    except Exception as e:
+        raise HTTPException(500, f"Failed to update request: {e}")
     return {"status": "rejected", "id": req_id}
 
 
