@@ -207,12 +207,44 @@ function Stat({ label, value, color, sub }) {
 
 // ── AUTH SCREENS ──────────────────────────────────────────────────────────────
 
+function EyeIcon({ visible }) {
+  return visible
+    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+}
+
+function PwdInput({ value, onChange, placeholder, show, onToggle, style }) {
+  return (
+    <div style={{ position:'relative', marginBottom:14 }}>
+      <input
+        type={show ? 'text' : 'password'}
+        required
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        style={{ ...style, marginBottom:0, paddingRight:40 }}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
+                 background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:0, display:'flex' }}
+        tabIndex={-1}
+      >
+        <EyeIcon visible={show} />
+      </button>
+    </div>
+  )
+}
+
 function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState('login')
-  const [form, setForm] = useState({ email:'', password:'', name:'', institution:'', role:'', research_area:'' })
+  const [form, setForm] = useState({ email:'', password:'', confirmPassword:'', name:'', institution:'', role:'', research_area:'' })
   const [busy, setBusy] = useState(false)
   const [err,  setErr]  = useState(null)
   const [msg,  setMsg]  = useState(null)
+  const [showPwd,     setShowPwd]     = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   const handleGoogleLogin = async () => {
@@ -233,6 +265,12 @@ function AuthScreen({ onAuth }) {
 
   const handleSignup = async e => {
     e.preventDefault(); setBusy(true); setErr(null)
+    if (form.password !== form.confirmPassword) {
+      setErr('Passwords do not match.'); setBusy(false); return
+    }
+    if (form.password.length < 8) {
+      setErr('Password must be at least 8 characters.'); setBusy(false); return
+    }
     const institutional = isInstitutional(form.email)
     if (!institutional) { setMode('apply'); setBusy(false); return }
     const { data, error } = await supabase.auth.signUp({
@@ -298,12 +336,12 @@ function AuthScreen({ onAuth }) {
                 <label style={S.lbl}>Email</label>
                 <input style={inputStyle} type="email" required placeholder="you@institution.ac.uk" value={form.email} onChange={e=>set('email',e.target.value)}/>
                 <label style={S.lbl}>Password</label>
-                <input style={inputStyle} type="password" required placeholder="••••••••" value={form.password} onChange={e=>set('password',e.target.value)}/>
+                <PwdInput value={form.password} onChange={e=>set('password',e.target.value)} placeholder="••••••••" show={showPwd} onToggle={()=>setShowPwd(v=>!v)} style={S.inp}/>
                 {err&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
                 <button type="submit" disabled={busy} style={btnPrimary}>{busy?'Signing in…':'Sign in'}</button>
               </form>
               <div style={{textAlign:'center',fontSize:13,color:'#6b7280'}}>
-                No account? <span onClick={()=>{setMode('signup');setErr(null)}} style={{color:'#1d4ed8',cursor:'pointer',fontWeight:600}}>Create one</span>
+                No account? <span onClick={()=>{setMode('signup');setErr(null);setShowPwd(false);setShowConfirm(false)}} style={{color:'#1d4ed8',cursor:'pointer',fontWeight:600}}>Create one</span>
               </div>
             </>
           )}
@@ -329,12 +367,16 @@ function AuthScreen({ onAuth }) {
                   {isInstitutional(form.email)?'✓ Institutional email — instant access':'⚠ Non-institutional email — requires approval'}
                 </div>}
                 <label style={S.lbl}>Password</label>
-                <input style={inputStyle} type="password" required placeholder="Min 8 characters" value={form.password} onChange={e=>set('password',e.target.value)}/>
+                <PwdInput value={form.password} onChange={e=>set('password',e.target.value)} placeholder="Min 8 characters" show={showPwd} onToggle={()=>setShowPwd(v=>!v)} style={S.inp}/>
+                <label style={S.lbl}>Confirm password</label>
+                <PwdInput value={form.confirmPassword} onChange={e=>set('confirmPassword',e.target.value)} placeholder="Re-enter password" show={showConfirm} onToggle={()=>setShowConfirm(v=>!v)} style={S.inp}/>
+                {form.confirmPassword && form.password !== form.confirmPassword &&
+                  <div style={{fontSize:11,color:'#dc2626',marginTop:-10,marginBottom:10}}>Passwords do not match</div>}
                 {err&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
                 <button type="submit" disabled={busy} style={btnPrimary}>{busy?'Creating account…':'Create account'}</button>
               </form>
               <div style={{textAlign:'center',fontSize:13,color:'#6b7280'}}>
-                Already have an account? <span onClick={()=>{setMode('login');setErr(null)}} style={{color:'#1d4ed8',cursor:'pointer',fontWeight:600}}>Sign in</span>
+                Already have an account? <span onClick={()=>{setMode('login');setErr(null);setShowPwd(false);setShowConfirm(false)}} style={{color:'#1d4ed8',cursor:'pointer',fontWeight:600}}>Sign in</span>
               </div>
             </>
           )}
