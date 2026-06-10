@@ -245,11 +245,26 @@ function buildClassEntries(job, ds) {
     })
   }
 
+  // Researcher-written descriptions for custom datasets
+  const customDescs = (() => {
+    const d = job.class_descriptions
+    if (!d) return {}
+    if (typeof d === 'string') { try { return JSON.parse(d) } catch { return {} } }
+    return d
+  })()
+
   return pairs
     .map(([key, acc]) => {
       const accPct  = +(Number(acc) * 100).toFixed(1)
       const metrics = prf[key] || null
-      const info    = ds?.classes?.[key] || { name: key, risk: 'low', note: '—' }
+      // Use MedMNIST clinical info if available, else researcher description, else generic
+      const info = ds?.classes?.[key] || {
+        name: key,
+        risk: 'low',
+        note: customDescs[key] || '—',
+      }
+      // Researcher description overrides empty MedMNIST note
+      if (info.note === '—' && customDescs[key]) info.note = customDescs[key]
       return {
         key, accPct, ...info,
         recall:    metrics ? +(metrics.recall    * 100).toFixed(1) : null,

@@ -812,8 +812,9 @@ async def create_study(
     num_rounds:      int = Form(5),
     local_epochs:    int = Form(2),
     nodes:              str = Form("[]"),
-    dp_noise_multiplier: Optional[float] = Form(None),
-    invitation_message:  Optional[str] = Form(None),
+    dp_noise_multiplier:  Optional[float] = Form(None),
+    invitation_message:   Optional[str]   = Form(None),
+    class_descriptions:   Optional[str]   = Form(None),
     file: Optional[UploadFile] = File(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -830,6 +831,9 @@ async def create_study(
     try: nodes_config = json.loads(nodes)
     except: nodes_config = []
 
+    try: class_desc_dict = json.loads(class_descriptions) if class_descriptions else {}
+    except: class_desc_dict = {}
+
     if store:
         node_ids = [n.get("node_id", str(n)) if isinstance(n, dict) else str(n)
                     for n in nodes_config]
@@ -841,6 +845,11 @@ async def create_study(
             dp_enabled=dp_noise_multiplier is not None,
             dp_noise_multiplier=dp_noise_multiplier,
         )
+        if class_desc_dict:
+            try:
+                store.update(study_id, class_descriptions=json.dumps(class_desc_dict))
+            except Exception:
+                pass
         # Also keep in jobs dict for training thread compatibility
         jobs[study_id] = {
             "study_id": study_id, "study_name": study_name,
@@ -850,6 +859,7 @@ async def create_study(
             "status": "pending", "current_round": 0, "round_results": [], "cancelled": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "nodes": nodes_config, "upload_filename": file.filename if file else None,
+            "class_descriptions": class_desc_dict,
         }
     else:
         jobs[study_id] = {

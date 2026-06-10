@@ -77,6 +77,8 @@ CREATE POLICY "Authenticated users can read nodes"
 ALTER TABLE studies ADD COLUMN IF NOT EXISTS model_storage_key TEXT;
 ALTER TABLE studies ADD COLUMN IF NOT EXISTS per_class_metrics JSONB;
 -- per_class_metrics shape: {"ClassName": {"recall": 0.91, "precision": 0.88, "f1": 0.895, "support": 120}, ...}
+ALTER TABLE studies ADD COLUMN IF NOT EXISTS class_descriptions JSONB;
+-- class_descriptions shape: {"ClassName": "researcher-written description", ...}
 
 
 -- ── access_requests ──────────────────────────────────────────────────────────
