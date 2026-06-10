@@ -1447,8 +1447,17 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
         raise HTTPException(503, "Requires Supabase")
     try:
         users = supabase_admin.auth.admin.list_users()
-        from datetime import timezone
-        now = datetime.now(timezone.utc)
+        def _is_banned(banned_until):
+            if not banned_until:
+                return False
+            s = str(banned_until).strip().lower()
+            if s in ("none", "null", ""):
+                return False
+            try:
+                bt = datetime.fromisoformat(s.replace("z", "+00:00"))
+                return bt > datetime.now(timezone.utc)
+            except Exception:
+                return True
         return [
             {
                 "id": str(u.id),
@@ -1460,7 +1469,7 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
                 "created_at": u.created_at,
                 "last_sign_in_at": u.last_sign_in_at,
                 "email_confirmed": u.email_confirmed_at is not None,
-                "banned": bool(u.banned_until and u.banned_until > now),
+                "banned": _is_banned(u.banned_until),
             }
             for u in (users or [])
         ]
