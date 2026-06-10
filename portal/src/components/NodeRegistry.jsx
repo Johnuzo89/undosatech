@@ -486,8 +486,7 @@ TAGS=radiology,pathology`;
       {section(3, "Download and launch the Docker container", <>
         <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Download the compose file directly from UndosaTech and start the node:</p>
         {codeBlock("pull", `# Download the compose file
-curl -O https://undosatech-production.up.railway.app/node/docker-compose.yml
-mv docker-compose.yml docker-compose.node.yml
+curl -O https://app.undosatech.com/docker-compose.node.yml
 
 # Start the node (runs in background)
 docker compose -f docker-compose.node.yml up -d`)}
