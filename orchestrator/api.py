@@ -1104,7 +1104,7 @@ async def admin_list_access_requests(
 
 
 @app.post("/admin/access-requests/{req_id}/approve")
-async def admin_approve_request(req_id: int, authorization: Optional[str] = Header(None)):
+async def admin_approve_request(req_id: str, authorization: Optional[str] = Header(None)):
     _require_admin(authorization)
     if not supabase_admin:
         raise HTTPException(503, "Requires Supabase")
@@ -1153,7 +1153,7 @@ async def admin_approve_request(req_id: int, authorization: Optional[str] = Head
 
 @app.post("/admin/access-requests/{req_id}/reject")
 async def admin_reject_request(
-    req_id: int,
+    req_id: str,
     body: dict = Body(default={}),
     authorization: Optional[str] = Header(None),
 ):
