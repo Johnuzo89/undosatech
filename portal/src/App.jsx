@@ -281,6 +281,15 @@ function AuthScreen({ onAuth }) {
     setMode('verify'); setBusy(false)
   }
 
+  const handleForgotPassword = async e => {
+    e.preventDefault(); setBusy(true); setErr(null)
+    const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
+      redirectTo: `${window.location.origin}/#reset-password`
+    })
+    if (error) { setErr(error.message); setBusy(false); return }
+    setMsg('Password reset email sent — check your inbox.'); setBusy(false)
+  }
+
   const handleApply = async e => {
     e.preventDefault(); setBusy(true); setErr(null)
     const { error } = await supabase.from('access_requests').insert({
@@ -322,6 +331,32 @@ function AuthScreen({ onAuth }) {
               <button onClick={()=>{setMode('login');setMsg(null)}} style={{...btnPrimary,width:'auto',padding:'8px 20px'}}>Back to login</button>
             </div>
           )}
+          {mode === 'forgot' && (
+            <>
+              {msg ? (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:40,marginBottom:12}}>📧</div>
+                  <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>Check your email</div>
+                  <div style={{fontSize:13,color:'#6b7280',marginBottom:16}}>{msg}</div>
+                  <button onClick={()=>{setMode('login');setMsg(null)}} style={{...btnPrimary,width:'auto',padding:'8px 20px'}}>Back to login</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>Reset your password</div>
+                  <div style={{fontSize:12,color:'#6b7280',marginBottom:16}}>Enter the email you signed up with and we'll send a reset link.</div>
+                  <form onSubmit={handleForgotPassword}>
+                    <label style={S.lbl}>Email</label>
+                    <input style={inputStyle} type="email" required placeholder="you@institution.ac.uk" value={form.email} onChange={e=>set('email',e.target.value)}/>
+                    {err&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
+                    <button type="submit" disabled={busy} style={btnPrimary}>{busy?'Sending…':'Send reset link'}</button>
+                  </form>
+                  <div style={{textAlign:'center',fontSize:13,color:'#6b7280'}}>
+                    <span onClick={()=>{setMode('login');setErr(null)}} style={{color:'#1d4ed8',cursor:'pointer'}}>← Back to login</span>
+                  </div>
+                </>
+              )}
+            </>
+          )}
           {mode === 'login' && !msg && (
             <>
               <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>Sign in to your account</div>
@@ -340,6 +375,9 @@ function AuthScreen({ onAuth }) {
                 {err&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
                 <button type="submit" disabled={busy} style={btnPrimary}>{busy?'Signing in…':'Sign in'}</button>
               </form>
+              <div style={{textAlign:'center',fontSize:13,color:'#6b7280',marginBottom:8}}>
+                <span onClick={()=>{setMode('forgot');setErr(null);setMsg(null)}} style={{color:'#1d4ed8',cursor:'pointer'}}>Forgot password?</span>
+              </div>
               <div style={{textAlign:'center',fontSize:13,color:'#6b7280'}}>
                 No account? <span onClick={()=>{setMode('signup');setErr(null);setShowPwd(false);setShowConfirm(false)}} style={{color:'#1d4ed8',cursor:'pointer',fontWeight:600}}>Create one</span>
               </div>
