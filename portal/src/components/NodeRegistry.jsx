@@ -480,24 +480,16 @@ TAGS=radiology,pathology`;
       {section(2, "Create your environment file", <>
         <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Create a file called <code style={{ color: "#e2e8f0" }}>.env.node</code> (never commit to version control):</p>
         {codeBlock("env", envTemplate)}
-        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>Contact the UndosaTech team at dr.uzoj@gmail.com to get your <code>NODE_REGISTRATION_SECRET</code>.</p>
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>Contact the UndosaTech team at <strong style={{ color: "#94a3b8" }}>contact@undosatech.com</strong> to get your <code>NODE_REGISTRATION_SECRET</code>.</p>
       </>)}
 
       {section(3, "Download and launch the Docker container", <>
-        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Download the compose file and start the node:</p>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Download the compose file directly from UndosaTech and start the node:</p>
         {codeBlock("pull", `# Download the compose file
-curl -O https://raw.githubusercontent.com/Johnuzo89/undosatech/main/docker-compose.node.yml
+curl -O https://undosatech-production.up.railway.app/node/docker-compose.yml
+mv docker-compose.yml docker-compose.node.yml
 
 # Start the node (runs in background)
-docker compose -f docker-compose.node.yml up -d`)}
-        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#94a3b8" }}>Or build from source:</p>
-        {codeBlock("build", `git clone https://github.com/Johnuzo89/undosatech.git
-cd undosatech
-
-# Build the node image
-docker build -f Dockerfile.node -t undosatech/fl-node:latest .
-
-# Start with your env file
 docker compose -f docker-compose.node.yml up -d`)}
       </>)}
 
@@ -524,8 +516,9 @@ docker ps --filter name=undosatech-fl-node`)}
       </>)}
 
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "14px 18px", fontSize: 12, color: "#64748b" }}>
-        <strong style={{ color: "#94a3b8" }}>Need help?</strong> Email dr.uzoj@gmail.com or open an issue at{" "}
-        <span style={{ color: "#818cf8" }}>github.com/Johnuzo89/undosatech</span>. Include your institution domain and node ID in the subject line.
+        <strong style={{ color: "#94a3b8" }}>Need help?</strong> Email{" "}
+        <span style={{ color: "#818cf8" }}>contact@undosatech.com</span> or{" "}
+        <span style={{ color: "#818cf8" }}>support@undosatech.com</span>. Include your institution domain and node ID in the subject line.
       </div>
     </div>
   );
