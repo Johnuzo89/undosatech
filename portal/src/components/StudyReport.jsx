@@ -191,15 +191,13 @@ const ARCH_LABELS = {
 const RISK_COLOR = { critical: '#dc2626', high: '#d97706', moderate: '#ca8a04', low: '#16a34a' }
 const RISK_BG    = { critical: '#fef2f2', high: '#fffbeb', moderate: '#fefce8', low: '#f0fdf4' }
 
-// ── Clinical action thresholds (applies to ALL datasets) ─────────────────────
-function clinicalAction(acc, risk) {
-  if (acc >= 92) return { label: 'Suitable for screening assistance', color: '#059669', bg: '#f0fdf4' }
-  if (acc >= 82) return { label: 'Use with clinical oversight',       color: '#1d4ed8', bg: '#eff6ff' }
-  if (acc >= 70) return { label: 'Expert verification required',      color: '#d97706', bg: '#fffbeb' }
-  return {
-    label: (risk === 'critical' || risk === 'high') ? 'Unsafe — retrain urgently' : 'Insufficient — retrain',
-    color: '#dc2626', bg: '#fef2f2',
-  }
+// Statistical performance tier — NOT a clinical certification
+function perfTier(f1) {
+  if (f1 == null) return null
+  if (f1 >= 0.90) return { label: 'Strong (F1 ≥ 0.90)',    color: '#059669', bg: '#f0fdf4' }
+  if (f1 >= 0.75) return { label: 'Moderate (F1 ≥ 0.75)',  color: '#1d4ed8', bg: '#eff6ff' }
+  if (f1 >= 0.60) return { label: 'Weak (F1 ≥ 0.60)',      color: '#d97706', bg: '#fffbeb' }
+  return          { label: 'Poor (F1 < 0.60)',              color: '#dc2626', bg: '#fef2f2' }
 }
 
 // ── Dataset key resolution ────────────────────────────────────────────────────
@@ -221,7 +219,6 @@ function buildClassEntries(job, ds) {
   const raw = job.per_class_accuracy
   if (!raw) return []
 
-  // Resolve class name list — try multiple sources
   const nameList = (
     job.class_names ||
     job.interpretability?.class_labels ||
@@ -229,13 +226,19 @@ function buildClassEntries(job, ds) {
     []
   )
 
-  let pairs = [] // [ [key_string, accuracy_0_to_1], ... ]
+  // per_class_metrics: {"ClassName": {recall, precision, f1, support}}
+  const prf = (() => {
+    const m = job.per_class_metrics
+    if (!m) return {}
+    if (typeof m === 'string') { try { return JSON.parse(m) } catch { return {} } }
+    return m
+  })()
 
+  let pairs = []
   if (Array.isArray(raw)) {
     pairs = raw.map((v, i) => [nameList[i] || `Class ${i}`, v])
   } else if (typeof raw === 'object') {
     pairs = Object.entries(raw).map(([k, v]) => {
-      // If key is numeric string, map via nameList
       const idx = !isNaN(k) ? +k : -1
       const name = idx >= 0 && nameList[idx] ? nameList[idx] : k
       return [name, v]
@@ -244,9 +247,16 @@ function buildClassEntries(job, ds) {
 
   return pairs
     .map(([key, acc]) => {
-      const accPct = +(Number(acc) * 100).toFixed(1)
-      const info = ds?.classes?.[key] || { name: key, risk: 'low', note: '—' }
-      return { key, accPct, ...info }
+      const accPct  = +(Number(acc) * 100).toFixed(1)
+      const metrics = prf[key] || null
+      const info    = ds?.classes?.[key] || { name: key, risk: 'low', note: '—' }
+      return {
+        key, accPct, ...info,
+        recall:    metrics ? +(metrics.recall    * 100).toFixed(1) : null,
+        precision: metrics ? +(metrics.precision * 100).toFixed(1) : null,
+        f1:        metrics ? +metrics.f1.toFixed(3)                : null,
+        support:   metrics?.support ?? null,
+      }
     })
     .sort((a, b) => b.accPct - a.accPct)
 }
@@ -514,10 +524,20 @@ export default function StudyReport({ job }) {
       {/* ── Class Analysis ── */}
       {classes.length > 0 && (
         <Sec title="Class-Level Analysis"
-          sub={`${classes.length} classes · 80% threshold = clinical acceptability`}>
+          sub={`${classes.length} classes · precision / recall / F1`}>
+
+          {/* Disclaimer */}
+          <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#92400e', lineHeight: 1.6 }}>
+            <strong>Research use only.</strong> These metrics describe statistical model performance on a benchmark test set.
+            They do not constitute a clinical validation, regulatory clearance, or deployment recommendation.
+            Clinical deployment requires prospective validation on the target population, site-specific calibration,
+            and regulatory approval (FDA 510(k), CE marking, or equivalent).
+            {!ds && ' Risk levels below are unclassified — consult domain experts to assign appropriate clinical risk to each class.'}
+          </div>
+
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>
-            Per-class accuracy with risk classification and recommended clinical action. Classes below 80% in high/critical categories are flagged.
-            {!ds && ' Clinical risk labels are unavailable for this custom dataset — consult domain experts to assign appropriate risk levels.'}
+            Recall = sensitivity (TP / actual positives). Precision = TP / predicted positives. F1 = harmonic mean.
+            High-risk classes with recall below 80% are flagged — low recall means the model misses real cases of that class.
           </div>
 
           {/* Bar chart */}
@@ -547,7 +567,7 @@ export default function StudyReport({ job }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  {['Class', 'Full Name', 'Accuracy', 'Trend', 'Risk', 'Clinical Action', 'Notes'].map(h => (
+                  {['Class', 'Full Name', 'Recall %', 'Precision %', 'F1', 'Support', 'Trend', 'Risk', 'Stat. Tier', 'Domain Notes'].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left', background: '#f9fafb',
                       borderBottom: '2px solid #e5e7eb', fontSize: 11, fontWeight: 700, color: '#6b7280',
                       textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
@@ -556,24 +576,33 @@ export default function StudyReport({ job }) {
               </thead>
               <tbody>
                 {classes.map((c, i) => {
-                  const action = clinicalAction(c.accPct, c.risk)
+                  const tier   = perfTier(c.f1)
                   const trend  = trends[c.key]
-                  const isAlert = (c.risk === 'critical' || c.risk === 'high') && c.accPct < 80
+                  const isAlert = (c.risk === 'critical' || c.risk === 'high') && (c.recall ?? c.accPct) < 80
                   return (
                     <tr key={i} style={{ background: isAlert ? '#fff7f7' : i % 2 === 0 ? '#fff' : '#fafafa' }}>
                       <td style={{ padding: '10px 12px', fontWeight: 700, borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace', fontSize: 12 }}>
                         {isAlert && <span style={{ marginRight: 4 }}>⚠</span>}{c.key}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>{c.name}</td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 700, fontSize: 14,
-                        color: c.accPct >= 82 ? '#059669' : c.accPct >= 70 ? '#d97706' : '#dc2626' }}>
-                        {c.accPct}%
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 700,
+                        color: (c.recall ?? c.accPct) >= 80 ? '#059669' : (c.recall ?? c.accPct) >= 65 ? '#d97706' : '#dc2626' }}>
+                        {c.recall ?? c.accPct}%
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600,
+                        color: c.precision != null ? (c.precision >= 80 ? '#059669' : c.precision >= 65 ? '#d97706' : '#dc2626') : '#d1d5db' }}>
+                        {c.precision != null ? `${c.precision}%` : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 700,
+                        color: c.f1 != null ? (c.f1 >= 0.80 ? '#059669' : c.f1 >= 0.65 ? '#d97706' : '#dc2626') : '#d1d5db' }}>
+                        {c.f1 != null ? c.f1.toFixed(2) : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', color: '#9ca3af' }}>
+                        {c.support ?? '—'}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 12,
                         color: trend ? (trend.delta > 0 ? '#059669' : trend.delta < -0.5 ? '#dc2626' : '#6b7280') : '#d1d5db' }}>
-                        {trend
-                          ? `${trend.delta > 0 ? '▲' : trend.delta < -0.5 ? '▼' : '→'} ${trend.delta > 0 ? '+' : ''}${trend.delta}%`
-                          : '—'}
+                        {trend ? `${trend.delta > 0 ? '▲' : trend.delta < -0.5 ? '▼' : '→'} ${trend.delta > 0 ? '+' : ''}${trend.delta}%` : '—'}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
                         <span style={{ background: RISK_BG[c.risk], color: RISK_COLOR[c.risk],
@@ -582,10 +611,9 @@ export default function StudyReport({ job }) {
                         </span>
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
-                        <span style={{ background: action.bg, color: action.color,
-                          padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
-                          {action.label}
-                        </span>
+                        {tier
+                          ? <span style={{ background: tier.bg, color: tier.color, padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{tier.label}</span>
+                          : <span style={{ color: '#d1d5db', fontSize: 11 }}>Run new study for F1</span>}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', color: '#6b7280', maxWidth: 280, fontSize: 12 }}>
                         {c.note}
@@ -600,10 +628,10 @@ export default function StudyReport({ job }) {
           {/* Class tier summary */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
             {[
-              { label: 'Screening-ready (≥92%)', count: classes.filter(c => c.accPct >= 92).length, color: '#059669', bg: '#f0fdf4' },
-              { label: 'Clinical oversight (82–91%)', count: classes.filter(c => c.accPct >= 82 && c.accPct < 92).length, color: '#1d4ed8', bg: '#eff6ff' },
-              { label: 'Verification required (70–81%)', count: classes.filter(c => c.accPct >= 70 && c.accPct < 82).length, color: '#d97706', bg: '#fffbeb' },
-              { label: 'Retrain needed (<70%)', count: classes.filter(c => c.accPct < 70).length, color: '#dc2626', bg: '#fef2f2' },
+              { label: 'Strong F1 (≥ 0.90)',    count: classes.filter(c => c.f1 != null ? c.f1 >= 0.90 : c.accPct >= 90).length, color: '#059669', bg: '#f0fdf4' },
+              { label: 'Moderate F1 (0.75–0.89)',count: classes.filter(c => c.f1 != null ? c.f1 >= 0.75 && c.f1 < 0.90 : c.accPct >= 75 && c.accPct < 90).length, color: '#1d4ed8', bg: '#eff6ff' },
+              { label: 'Weak F1 (0.60–0.74)',    count: classes.filter(c => c.f1 != null ? c.f1 >= 0.60 && c.f1 < 0.75 : c.accPct >= 60 && c.accPct < 75).length, color: '#d97706', bg: '#fffbeb' },
+              { label: 'Poor F1 (< 0.60)',       count: classes.filter(c => c.f1 != null ? c.f1 < 0.60  : c.accPct < 60).length,  color: '#dc2626', bg: '#fef2f2' },
             ].map(({ label, count, color, bg }) => (
               <div key={label} style={{ background: bg, border: `1px solid ${color}22`, borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 20, fontWeight: 800, color }}>{count}</span>

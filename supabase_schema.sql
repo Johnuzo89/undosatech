@@ -75,6 +75,8 @@ CREATE POLICY "Authenticated users can read nodes"
 -- Or the backend will create it automatically on first startup.
 
 ALTER TABLE studies ADD COLUMN IF NOT EXISTS model_storage_key TEXT;
+ALTER TABLE studies ADD COLUMN IF NOT EXISTS per_class_metrics JSONB;
+-- per_class_metrics shape: {"ClassName": {"recall": 0.91, "precision": 0.88, "f1": 0.895, "support": 120}, ...}
 
 
 -- ── access_requests ──────────────────────────────────────────────────────────
