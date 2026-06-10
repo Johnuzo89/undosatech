@@ -710,6 +710,75 @@ def health():
     }
 
 
+# ── Public auth helpers ───────────────────────────────────────────────────────
+
+@app.post("/auth/forgot-password")
+async def forgot_password(body: dict = Body(...)):
+    """Send a password-reset email from admin@undosatech.com via Resend."""
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(400, "Email is required")
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+
+    try:
+        link_resp = supabase_admin.auth.admin.generate_link({
+            "type": "recovery",
+            "email": email,
+            "options": {"redirect_to": f"{APP_URL}/#reset-password"},
+        })
+        reset_url = getattr(getattr(link_resp, "properties", None), "action_link", None)
+    except Exception as e:
+        logger.warning(f"generate_link(recovery) failed for {email}: {e}")
+        # Don't reveal whether the email exists — always return success to the caller
+        return {"sent": True}
+
+    if not reset_url:
+        return {"sent": True}
+
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — skipping reset email")
+        return {"sent": False, "error": "RESEND_API_KEY not configured"}
+
+    try:
+        import resend
+        resend.api_key = RESEND_API_KEY
+        resend.Emails.send({
+            "from": "UndosaTech <admin@undosatech.com>",
+            "to": [email],
+            "subject": "Reset your UndosaTech password",
+            "html": f"""
+<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#f9fafb;margin:0;padding:32px;">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;
+              padding:40px;border:1px solid #e5e7eb;">
+    <div style="font-size:22px;font-weight:800;color:#1d4ed8;margin-bottom:4px;">UndosaTech</div>
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:32px;">Federated Research Platform</div>
+    <p style="font-size:16px;color:#111827;margin:0 0 16px;">Password reset requested</p>
+    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 28px;">
+      Click the button below to set a new password. This link expires in 1 hour.
+      If you didn't request this, you can safely ignore this email.
+    </p>
+    <div style="text-align:center;margin-bottom:28px;">
+      <a href="{reset_url}"
+         style="display:inline-block;background:#1d4ed8;color:#fff;font-weight:700;
+                font-size:15px;padding:13px 32px;border-radius:8px;text-decoration:none;">
+        Set New Password
+      </a>
+    </div>
+    <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0 16px;">
+    <p style="font-size:11px;color:#d1d5db;margin:0;">© UndosaTech</p>
+  </div>
+</body>
+</html>""",
+        })
+    except Exception as e:
+        logger.warning(f"Reset email send failed for {email}: {e}")
+
+    return {"sent": True}
+
+
 # ── Studies ───────────────────────────────────────────────────────────────────
 
 @app.post("/studies", status_code=201)
@@ -1378,6 +1447,8 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
         raise HTTPException(503, "Requires Supabase")
     try:
         users = supabase_admin.auth.admin.list_users()
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
         return [
             {
                 "id": str(u.id),
@@ -1389,11 +1460,48 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
                 "created_at": u.created_at,
                 "last_sign_in_at": u.last_sign_in_at,
                 "email_confirmed": u.email_confirmed_at is not None,
+                "banned": bool(u.banned_until and u.banned_until > now),
             }
             for u in (users or [])
         ]
     except Exception as e:
         raise HTTPException(500, f"Failed to list users: {e}")
+
+
+@app.post("/admin/users/{user_id}/deactivate")
+async def admin_deactivate_user(user_id: str, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        supabase_admin.auth.admin.update_user_by_id(user_id, {"ban_duration": "87600h"})
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to deactivate user: {e}")
+
+
+@app.post("/admin/users/{user_id}/reactivate")
+async def admin_reactivate_user(user_id: str, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        supabase_admin.auth.admin.update_user_by_id(user_id, {"ban_duration": "none"})
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to reactivate user: {e}")
+
+
+@app.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        supabase_admin.auth.admin.delete_user(user_id)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to delete user: {e}")
 
 
 # ════════════════════════════════════════════════════════════════

@@ -205,6 +205,64 @@ function Stat({ label, value, color, sub }) {
   </div>
 }
 
+// ── RESET PASSWORD SCREEN ─────────────────────────────────────────────────────
+function ResetPasswordScreen({ onDone }) {
+  const [password, setPassword] = useState('')
+  const [confirm,  setConfirm]  = useState('')
+  const [showPwd,  setShowPwd]  = useState(false)
+  const [showConf, setShowConf] = useState(false)
+  const [busy,     setBusy]     = useState(false)
+  const [err,      setErr]      = useState(null)
+  const [done,     setDone]     = useState(false)
+
+  const handle = async e => {
+    e.preventDefault(); setBusy(true); setErr(null)
+    if (password !== confirm) { setErr('Passwords do not match.'); setBusy(false); return }
+    if (password.length < 8)  { setErr('Password must be at least 8 characters.'); setBusy(false); return }
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) { setErr(error.message); setBusy(false); return }
+    setDone(true); setBusy(false)
+  }
+
+  const inp = { ...S.inp, marginBottom: 14 }
+  const btnPrimary = { width:'100%', padding:12, background: busy?'#93c5fd':'#1d4ed8', color:'#fff', borderRadius:8, fontWeight:700, fontSize:14, cursor: busy?'not-allowed':'pointer', border:'none', marginBottom:10 }
+
+  return (
+    <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div style={{width:'100%',maxWidth:420}}>
+        <div style={{textAlign:'center',marginBottom:32}}>
+          <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:8}}>UndosaTech</div>
+          <div style={{fontSize:14,color:'#94a3b8'}}>Federated Research Platform</div>
+        </div>
+        <div style={{background:'#fff',borderRadius:16,padding:28,boxShadow:'0 25px 50px rgba(0,0,0,0.4)'}}>
+          {done ? (
+            <div style={{textAlign:'center',padding:'20px 0'}}>
+              <div style={{fontSize:40,marginBottom:12}}>✅</div>
+              <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>Password set!</div>
+              <div style={{fontSize:13,color:'#6b7280',marginBottom:16}}>You can now sign in with your new password.</div>
+              <button onClick={()=>{ supabase.auth.signOut(); onDone() }} style={{...btnPrimary,width:'auto',padding:'8px 20px'}}>Go to login</button>
+            </div>
+          ) : (
+            <>
+              <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>Set your password</div>
+              <div style={{fontSize:12,color:'#6b7280',marginBottom:16}}>Choose a strong password for your account.</div>
+              <form onSubmit={handle}>
+                <label style={S.lbl}>New password</label>
+                <PwdInput value={password} onChange={e=>setPassword(e.target.value)} placeholder="Min 8 characters" show={showPwd} onToggle={()=>setShowPwd(v=>!v)} style={S.inp}/>
+                <label style={S.lbl}>Confirm password</label>
+                <PwdInput value={confirm}  onChange={e=>setConfirm(e.target.value)}  placeholder="Re-enter password"  show={showConf} onToggle={()=>setShowConf(v=>!v)} style={S.inp}/>
+                {confirm && password !== confirm && <div style={{fontSize:11,color:'#dc2626',marginTop:-10,marginBottom:10}}>Passwords do not match</div>}
+                {err && <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
+                <button type="submit" disabled={busy} style={btnPrimary}>{busy?'Saving…':'Set password'}</button>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── AUTH SCREENS ──────────────────────────────────────────────────────────────
 
 function EyeIcon({ visible }) {
@@ -283,10 +341,19 @@ function AuthScreen({ onAuth }) {
 
   const handleForgotPassword = async e => {
     e.preventDefault(); setBusy(true); setErr(null)
-    const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
-      redirectTo: `${window.location.origin}/#reset-password`
-    })
-    if (error) { setErr(error.message); setBusy(false); return }
+    try {
+      const res = await fetch(`${API}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setErr(d.detail || 'Failed to send reset email'); setBusy(false); return
+      }
+    } catch {
+      setErr('Network error — please try again'); setBusy(false); return
+    }
     setMsg('Password reset email sent — check your inbox.'); setBusy(false)
   }
 
@@ -796,9 +863,10 @@ function StudiesList({ studies, onSelect }) {
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [session, setSession] = useState(null)
-  const [user,    setUser]    = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [session,   setSession]   = useState(null)
+  const [user,      setUser]      = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [resetMode, setResetMode] = useState(false)
   const [tab,     setTab]     = useState('launch')
   const [studies, setStudies] = useState([])
   const [selected,setSelected]= useState(null)
@@ -810,8 +878,14 @@ export default function App() {
     supabase.auth.getSession().then(({data:{session}})=>{
       setSession(session); setUser(session?.user||null); setLoading(false)
     })
-    const {data:{subscription}} = supabase.auth.onAuthStateChange((_,session)=>{
-      setSession(session); setUser(session?.user||null); setLoading(false)
+    const {data:{subscription}} = supabase.auth.onAuthStateChange((event, session)=>{
+      if (event === 'PASSWORD_RECOVERY') {
+        setResetMode(true)
+        setSession(session); setUser(session?.user||null)
+      } else {
+        setSession(session); setUser(session?.user||null)
+      }
+      setLoading(false)
     })
     return()=>subscription.unsubscribe()
   },[])
@@ -833,6 +907,7 @@ export default function App() {
   const signOut = async()=>{ await supabase.auth.signOut(); setSession(null); setUser(null) }
 
   if(loading) return <div style={{minHeight:'100vh',background:'#0f172a',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{color:'#94a3b8',fontSize:14}}>Loading…</div></div>
+  if(resetMode) return <ResetPasswordScreen onDone={()=>setResetMode(false)}/>
   if(!user) return <AuthScreen onAuth={(u,s)=>{setUser(u);setSession(s)}}/>
 
   const running=studies.filter(s=>s.status==='running').length
