@@ -91,7 +91,6 @@ CREATE TABLE IF NOT EXISTS access_requests (
     status            TEXT NOT NULL DEFAULT 'pending'
                       CHECK (status IN ('pending', 'approved', 'rejected')),
     rejection_reason  TEXT,
-    reviewed_at       TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
