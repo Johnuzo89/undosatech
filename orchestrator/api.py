@@ -1469,7 +1469,7 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
                 "created_at": u.created_at,
                 "last_sign_in_at": u.last_sign_in_at,
                 "email_confirmed": u.email_confirmed_at is not None,
-                "banned": _is_banned(u.banned_until),
+                "banned": _is_banned(getattr(u, 'banned_until', None)),
             }
             for u in (users or [])
         ]
