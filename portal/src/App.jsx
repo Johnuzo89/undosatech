@@ -146,9 +146,9 @@ async function apiFetch(path, opts={}, token=null) {
 }
 
 const S = {
-  card: { background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:'18px 22px', marginBottom:14 },
-  inp:  { width:'100%', padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, outline:'none', marginBottom:12, color:'#111', background:'#fff', fontFamily:'inherit' },
-  lbl:  { display:'block', fontSize:12, fontWeight:600, color:'#374151', marginBottom:4 },
+  card: { background:'#fff', border:'1px solid rgba(0,0,0,0.07)', borderRadius:16, padding:'20px 24px', marginBottom:14, boxShadow:'0 2px 8px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.03)' },
+  inp:  { width:'100%', padding:'10px 14px', border:'1px solid rgba(0,0,0,0.1)', borderRadius:10, fontSize:14, outline:'none', marginBottom:12, color:'#1D1D1F', background:'rgba(0,0,0,0.04)', fontFamily:'inherit', transition:'border-color 0.15s, box-shadow 0.15s' },
+  lbl:  { display:'block', fontSize:11, fontWeight:600, color:'#6E6E73', marginBottom:5, textTransform:'uppercase', letterSpacing:'0.05em' },
 }
 
 const ARCH_INFO = {
@@ -191,18 +191,26 @@ const PRESETS = [
 const COLORS=['#1d4ed8','#059669','#7c3aed','#d97706','#dc2626','#0891b2','#65a30d','#9333ea','#f59e0b','#10b981','#6366f1','#ef4444','#14b8a6','#f97316']
 
 function Badge({ status }) {
-  const m = {pending:['#f3f4f6','#374151','#e5e7eb'],running:['#f5f3ff','#6d28d9','#ddd6fe'],completed:['#ecfdf5','#065f46','#a7f3d0'],failed:['#fef2f2','#991b1b','#fecaca'],cancelling:['#fff7ed','#c2410c','#fed7aa'],cancelled:['#f3f4f6','#6b7280','#e5e7eb']}
+  const m = {
+    pending:    ['rgba(142,142,147,0.12)','#8E8E93','rgba(142,142,147,0.2)'],
+    running:    ['rgba(88,86,214,0.1)','#5856D6','rgba(88,86,214,0.2)'],
+    completed:  ['rgba(50,215,75,0.1)','#1a9e3a','rgba(50,215,75,0.2)'],
+    failed:     ['rgba(255,59,48,0.1)','#FF3B30','rgba(255,59,48,0.2)'],
+    cancelling: ['rgba(255,159,10,0.1)','#FF9F0A','rgba(255,159,10,0.2)'],
+    cancelled:  ['rgba(142,142,147,0.12)','#8E8E93','rgba(142,142,147,0.2)'],
+    stopped:    ['rgba(142,142,147,0.12)','#8E8E93','rgba(142,142,147,0.2)'],
+  }
   const [bg,c,b] = m[status]||m.pending
-  return <span style={{background:bg,color:c,border:`1px solid ${b}`,padding:'2px 10px',borderRadius:20,fontSize:11,fontWeight:600,display:'inline-flex',alignItems:'center',gap:5}}>
-    {status==='running'&&<span style={{width:6,height:6,borderRadius:'50%',background:'#7c3aed',animation:'pulse 1.2s infinite',display:'inline-block'}}/>}{status}
+  return <span style={{background:bg,color:c,border:`1px solid ${b}`,padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:600,display:'inline-flex',alignItems:'center',gap:5,letterSpacing:'0.01em'}}>
+    {status==='running'&&<span style={{width:6,height:6,borderRadius:'50%',background:'#5856D6',animation:'pulse 1.2s infinite',display:'inline-block'}}/>}{status}
   </span>
 }
 
 function Stat({ label, value, color, sub }) {
-  return <div style={{background:'#f9fafb',borderRadius:10,padding:'12px 16px',border:'1px solid #f3f4f6'}}>
-    <div style={{fontSize:11,color:'#9ca3af',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</div>
-    <div style={{fontSize:20,fontWeight:700,color:color||'#111',lineHeight:1}}>{value}</div>
-    {sub&&<div style={{fontSize:11,color:'#9ca3af',marginTop:3}}>{sub}</div>}
+  return <div style={{background:'rgba(0,0,0,0.03)',borderRadius:12,padding:'14px 16px',border:'1px solid rgba(0,0,0,0.05)'}}>
+    <div style={{fontSize:11,color:'#8E8E93',marginBottom:4,textTransform:'uppercase',letterSpacing:'0.06em',fontWeight:500}}>{label}</div>
+    <div style={{fontSize:22,fontWeight:700,color:color||'#1D1D1F',lineHeight:1,letterSpacing:'-0.02em'}}>{value}</div>
+    {sub&&<div style={{fontSize:11,color:'#AEAEB2',marginTop:4,fontWeight:500}}>{sub}</div>}
   </div>
 }
 
@@ -226,16 +234,18 @@ function ResetPasswordScreen({ onDone }) {
   }
 
   const inp = { ...S.inp, marginBottom: 14 }
-  const btnPrimary = { width:'100%', padding:12, background: busy?'#93c5fd':'#1d4ed8', color:'#fff', borderRadius:8, fontWeight:700, fontSize:14, cursor: busy?'not-allowed':'pointer', border:'none', marginBottom:10 }
+  const btnPrimary = { width:'100%', padding:'13px 0', background: busy?'rgba(0,122,255,0.5)':'#007AFF', color:'#fff', borderRadius:12, fontWeight:600, fontSize:15, cursor: busy?'not-allowed':'pointer', border:'none', marginBottom:10, letterSpacing:'-0.01em', boxShadow: busy?'none':'0 2px 8px rgba(0,122,255,0.3)' }
 
   return (
-    <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-      <div style={{width:'100%',maxWidth:420}}>
-        <div style={{textAlign:'center',marginBottom:32}}>
-          <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:8}}>UndosaTech</div>
-          <div style={{fontSize:14,color:'#94a3b8'}}>Federated Research Platform</div>
+    <div style={{minHeight:'100vh',background:'linear-gradient(160deg,#0a0a1a 0%,#0d1b3e 40%,#1a0a2e 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div style={{width:'100%',maxWidth:400}}>
+        <div style={{textAlign:'center',marginBottom:28}}>
+          <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:52,height:52,borderRadius:16,background:'linear-gradient(145deg,#007AFF,#5856D6)',marginBottom:16,boxShadow:'0 8px 24px rgba(0,122,255,0.4)'}}>
+            <span style={{color:'#fff',fontWeight:800,fontSize:22,letterSpacing:'-0.03em'}}>U</span>
+          </div>
+          <div style={{fontSize:26,fontWeight:700,color:'#fff',marginBottom:6,letterSpacing:'-0.02em'}}>UndosaTech</div>
         </div>
-        <div style={{background:'#fff',borderRadius:16,padding:28,boxShadow:'0 25px 50px rgba(0,0,0,0.4)'}}>
+        <div style={{background:'rgba(255,255,255,0.97)',borderRadius:20,padding:'28px 28px 24px',boxShadow:'0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)'}}>
           {done ? (
             <div style={{textAlign:'center',padding:'20px 0'}}>
               <div style={{fontSize:40,marginBottom:12}}>✅</div>
@@ -371,18 +381,20 @@ function AuthScreen({ onAuth }) {
   }
 
   const inputStyle = {...S.inp, marginBottom:14}
-  const btnPrimary = { width:'100%', padding:12, background:busy?'#93c5fd':'#1d4ed8', color:'#fff', borderRadius:8, fontWeight:700, fontSize:14, cursor:busy?'not-allowed':'pointer', border:'none', marginBottom:10 }
-  const btnGoogle = { width:'100%', padding:11, background:'#fff', color:'#374151', borderRadius:8, fontWeight:600, fontSize:14, cursor:'pointer', border:'1px solid #e5e7eb', marginBottom:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }
+  const btnPrimary = { width:'100%', padding:'13px 0', background:busy?'rgba(0,122,255,0.5)':'#007AFF', color:'#fff', borderRadius:12, fontWeight:600, fontSize:15, cursor:busy?'not-allowed':'pointer', border:'none', marginBottom:10, letterSpacing:'-0.01em', boxShadow: busy?'none':'0 2px 8px rgba(0,122,255,0.3)', transition:'all 0.15s' }
+  const btnGoogle = { width:'100%', padding:'11px 0', background:'#fff', color:'#1D1D1F', borderRadius:12, fontWeight:500, fontSize:14, cursor:'pointer', border:'1px solid rgba(0,0,0,0.1)', marginBottom:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }
 
   return (
-    <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-      <div style={{width:'100%',maxWidth:420}}>
-        <div style={{textAlign:'center',marginBottom:32}}>
-          <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:8}}>UndosaTech</div>
-          <div style={{fontSize:14,color:'#94a3b8'}}>Federated Research Platform</div>
-          <div style={{fontSize:12,color:'#64748b',marginTop:4}}>Privacy-preserving AI for medical science</div>
+    <div style={{minHeight:'100vh',background:'linear-gradient(160deg,#0a0a1a 0%,#0d1b3e 40%,#1a0a2e 100%)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div style={{width:'100%',maxWidth:400}}>
+        <div style={{textAlign:'center',marginBottom:28}}>
+          <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:52,height:52,borderRadius:16,background:'linear-gradient(145deg,#007AFF,#5856D6)',marginBottom:16,boxShadow:'0 8px 24px rgba(0,122,255,0.4)'}}>
+            <span style={{color:'#fff',fontWeight:800,fontSize:22,letterSpacing:'-0.03em'}}>U</span>
+          </div>
+          <div style={{fontSize:26,fontWeight:700,color:'#fff',marginBottom:6,letterSpacing:'-0.02em'}}>UndosaTech</div>
+          <div style={{fontSize:13,color:'rgba(255,255,255,0.5)',letterSpacing:'0.01em'}}>Federated Research Platform</div>
         </div>
-        <div style={{background:'#fff',borderRadius:16,padding:28,boxShadow:'0 25px 50px rgba(0,0,0,0.4)'}}>
+        <div style={{background:'rgba(255,255,255,0.97)',borderRadius:20,padding:'28px 28px 24px',boxShadow:'0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)'}}>
           {mode === 'verify' && (
             <div style={{textAlign:'center',padding:'20px 0'}}>
               <div style={{fontSize:40,marginBottom:12}}>📧</div>
@@ -571,8 +583,8 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
 
   return(
     <form onSubmit={submit} style={{maxWidth:620}}>
-      <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Launch a federated study</h1>
-      <p style={{fontSize:13,color:'#6b7280',marginBottom:20}}>Real federated training across institution nodes. Raw data never leaves its node — only model gradients are exchanged via FedAvg.</p>
+      <h1 style={{fontSize:24,fontWeight:700,marginBottom:6,letterSpacing:'-0.02em',color:'#1D1D1F'}}>Launch a federated study</h1>
+      <p style={{fontSize:14,color:'#6E6E73',marginBottom:24,lineHeight:1.6}}>Real federated training across institution nodes. Raw data never leaves its node — only model gradients are exchanged via FedAvg.</p>
       {hasRealNodes && (
         <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'14px 16px',marginBottom:16}}>
           <div style={{fontWeight:600,fontSize:13,color:'#92400e',marginBottom:8}}>📨 Invitations will be sent to {preselectedNodes.length} node{preselectedNodes.length>1?'s':''}</div>
@@ -593,7 +605,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         </div>
       )}
       <div style={S.card}>
-        <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>Study details</div>
+        <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.05em'}}>Study details</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           <div><label style={S.lbl}>Study name *</label><input style={S.inp} required placeholder="Glaucoma Detection — UK Cohort" value={form.study_name} onChange={e=>set('study_name',e.target.value)}/></div>
           <div><label style={S.lbl}>Researcher name *</label><input style={S.inp} required placeholder="Dr. John Ohanebo" value={form.researcher_name} onChange={e=>set('researcher_name',e.target.value)}/></div>
@@ -602,7 +614,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         <input style={{...S.inp,marginBottom:0}} required placeholder="University of Dundee" value={form.institution} onChange={e=>set('institution',e.target.value)}/>
       </div>
       <div style={S.card}>
-        <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>Dataset</div>
+        <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.05em'}}>Dataset</div>
         <select style={S.inp} value={form.dataset} onChange={e=>set('dataset',e.target.value)}>
           <optgroup label="Medical Imaging (MedMNIST)">
             {DATASETS.filter(d=>d.v!=='upload').map(d=><option key={d.v} value={d.v}>{d.l}</option>)}
@@ -662,7 +674,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         )}
       </div>
       <div style={S.card}>
-        <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>AI Model Architecture</div>
+        <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.05em'}}>AI Model Architecture</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
           {ARCHS.map(a=>(
             <div key={a.v} onClick={()=>set('architecture',a.v)}
@@ -674,7 +686,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         </div>
       </div>
       <div style={S.card}>
-        <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>Training configuration</div>
+        <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.05em'}}>Training configuration</div>
         <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
           {PRESETS.map(p=><button key={p.v} type="button" onClick={()=>applyPreset(p.v)}
             style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:500,cursor:'pointer',border:'none',background:preset===p.v?'#1d4ed8':'#f3f4f6',color:preset===p.v?'#fff':'#6b7280'}}>{p.l}</button>)}
@@ -685,11 +697,11 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         </div>}
         {preset!=='custom'&&<div style={{fontSize:12,color:'#6b7280',background:'#f9fafb',borderRadius:8,padding:'8px 12px'}}>{form.num_rounds} rounds · {form.local_epochs} epoch{form.local_epochs>1?'s':''}/round</div>}
       </div>
-      <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:12,color:'#0369a1'}}>
-        🔒 <strong>Zero raw data transfer.</strong> Only model weight gradients are aggregated via FedAvg. Full governance audit trail generated automatically.
+      <div style={{background:'rgba(0,122,255,0.06)',border:'1px solid rgba(0,122,255,0.15)',borderRadius:12,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#007AFF',display:'flex',alignItems:'center',gap:8}}>
+        🔒 <span><strong>Zero raw data transfer.</strong> Only model weight gradients are aggregated via FedAvg. Full governance audit trail generated automatically.</span>
       </div>
-      {err&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'9px 12px',color:'#991b1b',fontSize:13,marginBottom:12}}>{err}</div>}
-      <button type="submit" disabled={busy} style={{width:'100%',padding:13,background:busy?'#93c5fd':'#1d4ed8',color:'#fff',borderRadius:8,fontWeight:700,fontSize:15,cursor:busy?'not-allowed':'pointer',border:'none'}}>
+      {err&&<div style={{background:'rgba(255,59,48,0.08)',border:'1px solid rgba(255,59,48,0.2)',borderRadius:10,padding:'10px 14px',color:'#FF3B30',fontSize:13,marginBottom:12,fontWeight:500}}>{err}</div>}
+      <button type="submit" disabled={busy} style={{width:'100%',padding:'14px 0',background:busy?'rgba(0,122,255,0.5)':'#007AFF',color:'#fff',borderRadius:12,fontWeight:600,fontSize:15,cursor:busy?'not-allowed':'pointer',border:'none',letterSpacing:'-0.01em',boxShadow:busy?'none':'0 4px 12px rgba(0,122,255,0.35)',transition:'all 0.15s'}}>
         {busy?'Launching…': hasRealNodes ? '🚀 Launch study & send invitations' : '🚀 Launch federated training'}
       </button>
     </form>
@@ -744,7 +756,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
   const chart=rounds.map(r=>({round:`R${r.round||r.round_number}`,acc:+((r.global_accuracy||r.accuracy||0)*100).toFixed(2),loss:+(r.global_loss||r.loss||0).toFixed(4)}))
   const lastRound=rounds[rounds.length-1]
   const archInfo=ARCH_INFO[job?.architecture||job?.model]||{}
-  const tabBtn=t=>({padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:500,cursor:'pointer',border:'none',background:tab===t?'#1d4ed8':'#f3f4f6',color:tab===t?'#fff':'#6b7280'})
+  const tabBtn=t=>({padding:'6px 14px',borderRadius:99,fontSize:12,fontWeight:tab===t?600:500,cursor:'pointer',border:'none',background:tab===t?'#007AFF':'rgba(0,0,0,0.05)',color:tab===t?'#fff':'#6E6E73',transition:'all 0.15s',letterSpacing:'0.01em'})
   const logCol={info:'#374151',success:'#059669',error:'#dc2626',node:'#6d28d9'}
   const cancelStudy=async()=>{
     if(!confirm('Stop this training run?'))return
@@ -771,7 +783,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
   }
   return(
     <div>
-      <button onClick={onBack} style={{color:'#6b7280',fontSize:13,fontWeight:500,marginBottom:18,background:'none',border:'none',cursor:'pointer'}}>← All studies</button>
+      <button onClick={onBack} style={{color:'#007AFF',fontSize:13,fontWeight:500,marginBottom:20,background:'none',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:4,padding:0}}>← All studies</button>
       {job?<>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
           <div>
@@ -878,11 +890,11 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
 }
 
 function StudiesList({ studies, onSelect }) {
-  if(!studies.length)return<div style={{textAlign:'center',padding:'60px 20px',color:'#9ca3af'}}><div style={{fontSize:40,marginBottom:12}}>🔬</div><div style={{fontSize:16,fontWeight:600,color:'#374151',marginBottom:6}}>No studies yet</div><div style={{fontSize:13}}>Launch your first federated training study.</div></div>
-  return<div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
+  if(!studies.length)return<div style={{textAlign:'center',padding:'60px 20px',color:'#8E8E93',background:'#fff',borderRadius:16,border:'1px solid rgba(0,0,0,0.06)'}}><div style={{fontSize:44,marginBottom:12}}>🔬</div><div style={{fontSize:16,fontWeight:600,color:'#1D1D1F',marginBottom:6,letterSpacing:'-0.01em'}}>No studies yet</div><div style={{fontSize:13}}>Launch your first federated training study.</div></div>
+  return<div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.07)',borderRadius:16,overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
     {studies.map((s,i)=><div key={s.study_id||s.id} onClick={()=>onSelect(s.study_id||s.id)}
-      style={{display:'flex',alignItems:'center',gap:12,padding:'14px 20px',borderBottom:i<studies.length-1?'1px solid #f3f4f6':'none',cursor:'pointer'}}
-      onMouseEnter={e=>e.currentTarget.style.background='#fafafa'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+      style={{display:'flex',alignItems:'center',gap:12,padding:'14px 20px',borderBottom:i<studies.length-1?'1px solid rgba(0,0,0,0.05)':'none',cursor:'pointer',transition:'background 0.1s'}}
+      onMouseEnter={e=>e.currentTarget.style.background='rgba(0,122,255,0.03)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.study_name||s.name}</div>
         <div style={{fontSize:11,color:'#9ca3af'}}>{s.researcher_name||s.user_email} · {s.dataset} · {ARCH_INFO[s.architecture||s.model]?.name||s.architecture||s.model} · {s.num_rounds||s.total_rounds} rounds</div>
@@ -950,29 +962,32 @@ export default function App() {
   const isAdmin=ADMIN_EMAILS.includes(user.email||'')
 
   const nav=(t,label,badge)=><button onClick={()=>{setTab(t);if(t!=='studies')setSelected(null)}}
-    style={{padding:'7px 16px',borderRadius:8,fontSize:13,fontWeight:tab===t?600:400,cursor:'pointer',border:'none',background:tab===t?'#1d4ed8':'transparent',color:tab===t?'#fff':'#9ca3af',display:'flex',alignItems:'center',gap:6}}>
-    {label}{badge>0&&<span style={{background:'#7c3aed',color:'#fff',fontSize:10,padding:'1px 6px',borderRadius:10,fontWeight:700}}>{badge}</span>}
+    style={{padding:'6px 14px',borderRadius:99,fontSize:13,fontWeight:tab===t?600:500,cursor:'pointer',border:'none',background:tab===t?'#007AFF':'transparent',color:tab===t?'#fff':'#6E6E73',display:'flex',alignItems:'center',gap:5,transition:'all 0.15s'}}>
+    {label}{badge>0&&<span style={{background:tab===t?'rgba(255,255,255,0.25)':'#007AFF',color:'#fff',fontSize:10,padding:'1px 6px',borderRadius:10,fontWeight:700,minWidth:16,textAlign:'center'}}>{badge}</span>}
   </button>
 
-  return<div style={{minHeight:'100vh',background:'#f9fafb'}}>
-    <header style={{background:'#111827',padding:'0 24px',height:52,display:'flex',alignItems:'center',gap:14,position:'sticky',top:0,zIndex:10}}>
-      <div style={{color:'#fff',fontWeight:700,fontSize:15,marginRight:8}}>UndosaTech <span style={{fontSize:10,fontWeight:400,color:'#6b7280'}}>Federated Research Platform</span></div>
-      {nav('launch','🚀 Launch',0)}
-      {nav('nodes','⬡ Nodes', selectedNodes.length)}
+  return<div style={{minHeight:'100vh',background:'#F5F5F7'}}>
+    <header style={{background:'rgba(255,255,255,0.88)',backdropFilter:'saturate(180%) blur(20px)',WebkitBackdropFilter:'saturate(180%) blur(20px)',borderBottom:'1px solid rgba(0,0,0,0.08)',padding:'0 20px',height:54,display:'flex',alignItems:'center',gap:4,position:'sticky',top:0,zIndex:100}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginRight:12}}>
+        <div style={{width:30,height:30,borderRadius:9,background:'linear-gradient(145deg,#007AFF,#5856D6)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:14,flexShrink:0,boxShadow:'0 2px 8px rgba(0,122,255,0.3)'}}>U</div>
+        <span style={{fontWeight:700,fontSize:15,color:'#1D1D1F',letterSpacing:'-0.02em'}}>UndosaTech</span>
+      </div>
+      {nav('launch','Launch',0)}
+      {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
-      {isAdmin&&nav('admin','⚙ Admin',0)}
-      <div style={{marginLeft:'auto',display:'flex',gap:12,alignItems:'center',fontSize:12}}>
-        {completed>0&&<span style={{color:'#34d399'}}>{completed} completed</span>}
-        <span style={{color:online?'#34d399':'#f87171',display:'flex',alignItems:'center',gap:5}}>
-          <span style={{width:6,height:6,borderRadius:'50%',background:online?'#34d399':'#f87171',display:'inline-block'}}/>
-          {online===null?'Connecting…':online?'API online':'API offline'}
+      {isAdmin&&nav('admin','Admin',0)}
+      <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
+        {completed>0&&<span style={{fontSize:12,color:'#32D74B',fontWeight:600,background:'rgba(50,215,75,0.1)',padding:'4px 10px',borderRadius:99}}>{completed} completed</span>}
+        <span style={{color:online?'#32D74B':'#FF3B30',display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:500,background:online?'rgba(50,215,75,0.08)':'rgba(255,59,48,0.08)',padding:'4px 10px',borderRadius:99}}>
+          <span style={{width:6,height:6,borderRadius:'50%',background:online?'#32D74B':'#FF3B30',display:'inline-block',boxShadow:online?'0 0 5px rgba(50,215,75,0.6)':'none'}}/>
+          {online===null?'Connecting…':online?'Online':'Offline'}
         </span>
-        <div style={{display:'flex',alignItems:'center',gap:8,paddingLeft:12,borderLeft:'1px solid #374151'}}>
-          <div style={{width:28,height:28,borderRadius:'50%',background:'#1d4ed8',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#fff',fontWeight:700}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,paddingLeft:10,borderLeft:'1px solid rgba(0,0,0,0.08)'}}>
+          <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#007AFF,#5856D6)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#fff',fontWeight:700,boxShadow:'0 2px 6px rgba(0,122,255,0.3)'}}>
             {displayName[0].toUpperCase()}
           </div>
-          <span style={{color:'#9ca3af',fontSize:12}}>{displayName}</span>
-          <button onClick={signOut} style={{color:'#6b7280',fontSize:11,background:'none',border:'none',cursor:'pointer',padding:'2px 6px'}}>Sign out</button>
+          <span style={{color:'#1D1D1F',fontSize:13,fontWeight:500}}>{displayName}</span>
+          <button onClick={signOut} style={{color:'#FF3B30',fontSize:12,background:'none',border:'none',cursor:'pointer',fontWeight:500,padding:'4px 8px',borderRadius:6}}>Sign out</button>
         </div>
       </div>
     </header>
@@ -989,7 +1004,7 @@ export default function App() {
       )}
       {tab==='studies'&&!selected&&<>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <h1 style={{fontSize:22,fontWeight:700}}>Studies</h1>
+          <h1 style={{fontSize:22,fontWeight:700,letterSpacing:'-0.02em',color:'#1D1D1F'}}>Studies</h1>
           <div style={{fontSize:13,color:'#9ca3af'}}>{running>0&&<span style={{color:'#7c3aed',fontWeight:600,marginRight:12}}>⚡ {running} running</span>}{studies.length} total</div>
         </div>
         <StudiesList studies={studies} onSelect={id=>{setSelected(id);setStudyInitialTab('live')}}/>
@@ -997,6 +1012,6 @@ export default function App() {
       {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
     </div>
-    <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f9fafb;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased} input,select,button,textarea{font-family:inherit} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}`}</style>
+    <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#F5F5F7;color:#1D1D1F;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale} input,select,button,textarea{font-family:inherit} input:focus,select:focus,textarea:focus{border-color:#007AFF !important;box-shadow:0 0 0 3px rgba(0,122,255,0.12) !important;outline:none} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:99px} a{color:#007AFF}`}</style>
   </div>
 }

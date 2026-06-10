@@ -6,34 +6,34 @@ const API = import.meta.env.VITE_API_URL || 'https://undosatech-production.up.ra
 
 // ── Shared ────────────────────────────────────────────────────────────────────
 const S = {
-  card: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px 24px', marginBottom: 14 },
-  th:   { padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left', whiteSpace: 'nowrap' },
-  td:   { padding: '12px 14px', fontSize: 13, color: '#374151', borderBottom: '1px solid #f3f4f6', verticalAlign: 'middle' },
-  inp:  { padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' },
+  card: { background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 16, padding: '20px 24px', marginBottom: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.03)' },
+  th:   { padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#F5F5F7', borderBottom: '1px solid rgba(0,0,0,0.06)', textAlign: 'left', whiteSpace: 'nowrap' },
+  td:   { padding: '12px 14px', fontSize: 13, color: '#1D1D1F', borderBottom: '1px solid rgba(0,0,0,0.04)', verticalAlign: 'middle' },
+  inp:  { padding: '9px 14px', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 10, fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', background: 'rgba(0,0,0,0.04)', color: '#1D1D1F' },
 }
 
 const btn = (bg, text = '#fff', small = false) => ({
-  padding: small ? '5px 12px' : '9px 18px', borderRadius: 8, border: 'none',
+  padding: small ? '5px 12px' : '9px 18px', borderRadius: small ? 8 : 10, border: 'none',
   background: bg, color: text, fontWeight: 600, cursor: 'pointer',
-  fontSize: small ? 12 : 13, whiteSpace: 'nowrap',
+  fontSize: small ? 12 : 13, whiteSpace: 'nowrap', transition: 'opacity 0.15s',
 })
 
 function StatusPill({ status }) {
   const map = {
-    pending:   ['#fef3c7', '#92400e'],
-    approved:  ['#d1fae5', '#065f46'],
-    rejected:  ['#fee2e2', '#991b1b'],
-    running:   ['#ede9fe', '#5b21b6'],
-    completed: ['#d1fae5', '#065f46'],
-    failed:    ['#fee2e2', '#991b1b'],
-    cancelled: ['#f3f4f6', '#374151'],
-    stopped:   ['#fef3c7', '#92400e'],
-    active:    ['#d1fae5', '#065f46'],
-    offline:   ['#f3f4f6', '#374151'],
-    suspended: ['#fee2e2', '#991b1b'],
+    pending:   ['rgba(255,159,10,0.1)',   '#FF9F0A'],
+    approved:  ['rgba(50,215,75,0.1)',    '#1a9e3a'],
+    rejected:  ['rgba(255,59,48,0.1)',    '#FF3B30'],
+    running:   ['rgba(88,86,214,0.1)',    '#5856D6'],
+    completed: ['rgba(50,215,75,0.1)',    '#1a9e3a'],
+    failed:    ['rgba(255,59,48,0.1)',    '#FF3B30'],
+    cancelled: ['rgba(142,142,147,0.12)','#8E8E93'],
+    stopped:   ['rgba(255,159,10,0.1)',   '#FF9F0A'],
+    active:    ['rgba(50,215,75,0.1)',    '#1a9e3a'],
+    offline:   ['rgba(142,142,147,0.12)','#8E8E93'],
+    suspended: ['rgba(255,59,48,0.1)',    '#FF3B30'],
   }
-  const [bg, c] = map[status] || ['#f3f4f6', '#374151']
-  return <span style={{ background: bg, color: c, padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{status}</span>
+  const [bg, c] = map[status] || ['rgba(142,142,147,0.12)', '#8E8E93']
+  return <span style={{ background: bg, color: c, padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{status}</span>
 }
 
 function ago(iso) {
@@ -48,13 +48,13 @@ function ago(iso) {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, color = '#111827', alert }) {
+function StatCard({ label, value, sub, color = '#1D1D1F', alert, accentColor }) {
   return (
-    <div style={{ ...S.card, marginBottom: 0, position: 'relative' }}>
-      {alert > 0 && <span style={{ position: 'absolute', top: 14, right: 14, background: '#dc2626', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99 }}>{alert}</span>}
-      <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 32, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{sub}</div>}
+    <div style={{ ...S.card, marginBottom: 0, position: 'relative', borderLeft: accentColor ? `3px solid ${accentColor}` : undefined, paddingLeft: accentColor ? 20 : 24 }}>
+      {alert > 0 && <span style={{ position: 'absolute', top: 14, right: 14, background: '#FF3B30', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99 }}>{alert}</span>}
+      <div style={{ fontSize: 11, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, fontWeight: 500 }}>{label}</div>
+      <div style={{ fontSize: 32, fontWeight: 800, color, lineHeight: 1, letterSpacing: '-0.03em' }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4, fontWeight: 500 }}>{sub}</div>}
     </div>
   )
 }
@@ -63,13 +63,13 @@ function StatCard({ label, value, sub, color = '#111827', alert }) {
 function RejectModal({ request, onConfirm, onCancel }) {
   const [reason, setReason] = useState('')
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 440, boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: 17 }}>Reject request</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6b7280' }}>
-          Rejecting access for <strong>{request.email}</strong> ({request.institution}).
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 440, boxShadow: '0 32px 64px rgba(0,0,0,0.2)' }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}>Reject request</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#6E6E73' }}>
+          Rejecting access for <strong style={{ color: '#1D1D1F' }}>{request.email}</strong> ({request.institution}).
         </p>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Reason (optional, not emailed)</label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reason (optional, not emailed)</label>
         <textarea
           value={reason}
           onChange={e => setReason(e.target.value)}
@@ -78,8 +78,8 @@ function RejectModal({ request, onConfirm, onCancel }) {
           style={{ ...S.inp, resize: 'vertical', marginBottom: 16 }}
         />
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onCancel} style={{ ...btn('#f3f4f6', '#374151'), flex: 1 }}>Cancel</button>
-          <button onClick={() => onConfirm(reason)} style={{ ...btn('#dc2626'), flex: 1 }}>Confirm reject</button>
+          <button onClick={onCancel} style={{ ...btn('rgba(0,0,0,0.06)', '#1D1D1F'), flex: 1 }}>Cancel</button>
+          <button onClick={() => onConfirm(reason)} style={{ ...btn('#FF3B30'), flex: 1 }}>Confirm reject</button>
         </div>
       </div>
     </div>
@@ -88,7 +88,7 @@ function RejectModal({ request, onConfirm, onCancel }) {
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
 function Overview({ stats, requests, studies, onTabSwitch }) {
-  if (!stats) return <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>Loading stats…</div>
+  if (!stats) return <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>Loading stats…</div>
   const pendingReqs = requests.filter(r => r.status === 'pending')
   const recentStudies = studies.slice(0, 6)
 
@@ -96,30 +96,30 @@ function Overview({ stats, requests, studies, onTabSwitch }) {
     <div>
       {/* Stat grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 28 }}>
-        <StatCard label="Pending requests" value={stats.access_requests.pending} color={stats.access_requests.pending > 0 ? '#dc2626' : '#111'} alert={stats.access_requests.pending} sub={`${stats.access_requests.total} total`} />
-        <StatCard label="Registered users" value={stats.users.total} color="#1d4ed8" sub="all time" />
-        <StatCard label="Total studies" value={stats.studies.total} color="#111" sub={`${stats.studies.running} running`} />
-        <StatCard label="Studies complete" value={stats.studies.completed} color="#059669" sub={`${stats.studies.failed} failed`} />
-        <StatCard label="FL nodes" value={stats.nodes.total} color="#7c3aed" sub={`${stats.nodes.active} active · ${stats.nodes.pending} pending`} />
+        <StatCard label="Pending requests" value={stats.access_requests.pending} color={stats.access_requests.pending > 0 ? '#FF3B30' : '#1D1D1F'} alert={stats.access_requests.pending} sub={`${stats.access_requests.total} total`} accentColor={stats.access_requests.pending > 0 ? '#FF3B30' : undefined} />
+        <StatCard label="Registered users" value={stats.users.total} color="#007AFF" sub="all time" accentColor="#007AFF" />
+        <StatCard label="Total studies" value={stats.studies.total} color="#1D1D1F" sub={`${stats.studies.running} running`} />
+        <StatCard label="Studies complete" value={stats.studies.completed} color="#1a9e3a" sub={`${stats.studies.failed} failed`} accentColor="#32D74B" />
+        <StatCard label="FL nodes" value={stats.nodes.total} color="#5856D6" sub={`${stats.nodes.active} active · ${stats.nodes.pending} pending`} accentColor="#5856D6" />
       </div>
 
       {/* Pending requests callout */}
       {pendingReqs.length > 0 && (
-        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 18px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'rgba(255,159,10,0.08)', border: '1px solid rgba(255,159,10,0.2)', borderRadius: 14, padding: '14px 18px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#92400e' }}>⚠ {pendingReqs.length} access request{pendingReqs.length > 1 ? 's' : ''} awaiting review</div>
-            <div style={{ fontSize: 12, color: '#b45309', marginTop: 2 }}>{pendingReqs.map(r => r.email).join(', ')}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#FF9F0A', letterSpacing: '-0.01em' }}>⚠ {pendingReqs.length} access request{pendingReqs.length > 1 ? 's' : ''} awaiting review</div>
+            <div style={{ fontSize: 12, color: '#FF9F0A', marginTop: 3, opacity: 0.8 }}>{pendingReqs.map(r => r.email).join(', ')}</div>
           </div>
-          <button onClick={() => onTabSwitch('requests')} style={{ ...btn('#d97706'), padding: '7px 14px', fontSize: 12 }}>Review now →</button>
+          <button onClick={() => onTabSwitch('requests')} style={{ ...btn('rgba(255,159,10,0.15)', '#FF9F0A'), padding: '7px 14px', fontSize: 12 }}>Review now →</button>
         </div>
       )}
 
       {/* Recent studies */}
       {recentStudies.length > 0 && (
         <div style={S.card}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: 'flex', justifyContent: 'space-between', letterSpacing: '-0.01em' }}>
             <span>Recent studies</span>
-            <button onClick={() => onTabSwitch('studies')} style={{ ...btn('transparent', '#1d4ed8', true), padding: 0 }}>View all →</button>
+            <button onClick={() => onTabSwitch('studies')} style={{ ...btn('transparent', '#007AFF', true), padding: 0, fontWeight: 600 }}>View all →</button>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -128,14 +128,14 @@ function Overview({ stats, requests, studies, onTabSwitch }) {
               </tr>
             </thead>
             <tbody>
-              {recentStudies.map(s => (
-                <tr key={s.id || s.study_id}>
+              {recentStudies.map((s, i) => (
+                <tr key={s.id || s.study_id} style={{ background: i % 2 === 0 ? '#fff' : 'rgba(0,0,0,0.015)' }}>
                   <td style={S.td}><span style={{ fontWeight: 600 }}>{s.name || s.study_name}</span></td>
-                  <td style={{ ...S.td, fontSize: 12, color: '#6b7280' }}>{s.user_email || '—'}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: '#6E6E73' }}>{s.user_email || '—'}</td>
                   <td style={S.td}>{s.dataset}</td>
                   <td style={S.td}><StatusPill status={s.status} /></td>
-                  <td style={{ ...S.td, fontWeight: 700, color: '#059669' }}>{s.final_accuracy != null ? `${(s.final_accuracy * 100).toFixed(1)}%` : '—'}</td>
-                  <td style={{ ...S.td, fontSize: 12, color: '#9ca3af' }}>{ago(s.created_at)}</td>
+                  <td style={{ ...S.td, fontWeight: 700, color: '#1a9e3a' }}>{s.final_accuracy != null ? `${(s.final_accuracy * 100).toFixed(1)}%` : '—'}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: '#AEAEB2' }}>{ago(s.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -209,19 +209,19 @@ function AccessRequests({ session, onStatsRefresh }) {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         {['pending', 'approved', 'rejected', 'all'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: 'none', background: filter === f ? '#1d4ed8' : '#f3f4f6', color: filter === f ? '#fff' : '#6b7280', fontWeight: filter === f ? 600 : 400, textTransform: 'capitalize' }}>{f}</button>
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 99, fontSize: 12, cursor: 'pointer', border: 'none', background: filter === f ? '#007AFF' : 'rgba(0,0,0,0.05)', color: filter === f ? '#fff' : '#6E6E73', fontWeight: filter === f ? 600 : 500, textTransform: 'capitalize', transition: 'all 0.15s' }}>{f}</button>
         ))}
-        <button onClick={load} style={{ ...btn('#f3f4f6', '#6b7280', true), marginLeft: 'auto' }}>↻ Refresh</button>
+        <button onClick={load} style={{ ...btn('rgba(0,0,0,0.05)', '#6E6E73', true), marginLeft: 'auto' }}>↻ Refresh</button>
       </div>
 
-      {msg && <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13,
-        background: msg.type === 'success' ? '#d1fae5' : msg.type === 'warning' ? '#fef3c7' : '#fee2e2',
-        color:      msg.type === 'success' ? '#065f46' : msg.type === 'warning' ? '#92400e' : '#991b1b' }}>{msg.text}</div>}
+      {msg && <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13, fontWeight: 500,
+        background: msg.type === 'success' ? 'rgba(50,215,75,0.1)' : msg.type === 'warning' ? 'rgba(255,159,10,0.1)' : 'rgba(255,59,48,0.1)',
+        color:      msg.type === 'success' ? '#1a9e3a' : msg.type === 'warning' ? '#FF9F0A' : '#FF3B30' }}>{msg.text}</div>}
 
       {loading ? (
-        <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>Loading…</div>
+        <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>Loading…</div>
       ) : requests.length === 0 ? (
-        <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>No {filter} requests.</div>
+        <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>No {filter} requests.</div>
       ) : (
         <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -229,14 +229,14 @@ function AccessRequests({ session, onStatsRefresh }) {
               <tr>{['Name', 'Email', 'Institution', 'Role', 'Research Area', 'Submitted', 'Status', 'Actions'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
             </thead>
             <tbody>
-              {requests.map(r => (
-                <tr key={r.id} style={{ background: r.status === 'pending' ? '#fffbeb' : '#fff' }}>
+              {requests.map((r, i) => (
+                <tr key={r.id} style={{ background: r.status === 'pending' ? 'rgba(255,159,10,0.04)' : i % 2 === 0 ? '#fff' : 'rgba(0,0,0,0.015)' }}>
                   <td style={{ ...S.td, fontWeight: 600 }}>{r.full_name || '—'}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{r.email}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{r.institution}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{r.role}</td>
                   <td style={{ ...S.td, fontSize: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.research_area || '—'}</td>
-                  <td style={{ ...S.td, fontSize: 12, color: '#9ca3af' }}>{ago(r.created_at)}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: '#AEAEB2' }}>{ago(r.created_at)}</td>
                   <td style={S.td}><StatusPill status={r.status} /></td>
                   <td style={S.td}>
                     {r.status === 'pending' && (
@@ -244,12 +244,12 @@ function AccessRequests({ session, onStatsRefresh }) {
                         <button
                           onClick={() => act(r.id, 'approve')}
                           disabled={!!busy[r.id]}
-                          style={{ ...btn('#059669', '#fff', true) }}
+                          style={{ ...btn('rgba(50,215,75,0.12)', '#1a9e3a', true) }}
                         >{busy[r.id] === 'approve' ? '…' : '✓ Approve'}</button>
                         <button
                           onClick={() => setRejectTarget(r)}
                           disabled={!!busy[r.id]}
-                          style={{ ...btn('#fee2e2', '#991b1b', true) }}
+                          style={{ ...btn('rgba(255,59,48,0.1)', '#FF3B30', true) }}
                         >✗ Reject</button>
                       </div>
                     )}
@@ -257,11 +257,11 @@ function AccessRequests({ session, onStatsRefresh }) {
                       <button
                         onClick={() => act(r.id, 'resend')}
                         disabled={!!busy[r.id]}
-                        style={{ ...btn('#eff6ff', '#1d4ed8', true) }}
+                        style={{ ...btn('rgba(0,122,255,0.1)', '#007AFF', true) }}
                       >{busy[r.id] === 'resend' ? '…' : '✉ Resend'}</button>
                     )}
                     {r.status === 'rejected' && r.rejection_reason && (
-                      <span style={{ fontSize: 11, color: '#9ca3af' }} title={r.rejection_reason}>Reason recorded</span>
+                      <span style={{ fontSize: 11, color: '#AEAEB2' }} title={r.rejection_reason}>Reason recorded</span>
                     )}
                   </td>
                 </tr>
@@ -311,16 +311,16 @@ function AllStudies({ studies, loading }) {
         />
         <div style={{ display: 'flex', gap: 6 }}>
           {statuses.map(f => (
-            <button key={f} onClick={() => setFilterStatus(f)} style={{ padding: '6px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: 'none', background: filterStatus === f ? '#1d4ed8' : '#f3f4f6', color: filterStatus === f ? '#fff' : '#6b7280', fontWeight: filterStatus === f ? 600 : 400, textTransform: 'capitalize' }}>{f}</button>
+            <button key={f} onClick={() => setFilterStatus(f)} style={{ padding: '6px 12px', borderRadius: 99, fontSize: 12, cursor: 'pointer', border: 'none', background: filterStatus === f ? '#007AFF' : 'rgba(0,0,0,0.05)', color: filterStatus === f ? '#fff' : '#6E6E73', fontWeight: filterStatus === f ? 600 : 500, textTransform: 'capitalize', transition: 'all 0.15s' }}>{f}</button>
           ))}
         </div>
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af', alignSelf: 'center' }}>{filtered.length} studies</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#AEAEB2', alignSelf: 'center' }}>{filtered.length} studies</span>
       </div>
 
       {loading ? (
-        <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>Loading…</div>
+        <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>Loading…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>No studies found.</div>
+        <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>No studies found.</div>
       ) : (
         <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -328,16 +328,16 @@ function AllStudies({ studies, loading }) {
               <tr>{['Study', 'User', 'Model', 'Dataset', 'Rounds', 'Status', 'Accuracy', 'Created'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
             </thead>
             <tbody>
-              {filtered.map(s => (
-                <tr key={s.id || s.study_id} style={{ cursor: 'default' }}>
+              {filtered.map((s, i) => (
+                <tr key={s.id || s.study_id} style={{ cursor: 'default', background: i % 2 === 0 ? '#fff' : 'rgba(0,0,0,0.015)' }}>
                   <td style={{ ...S.td, fontWeight: 600, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || s.study_name}</td>
-                  <td style={{ ...S.td, fontSize: 12, color: '#6b7280' }}>{s.user_email || '—'}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: '#6E6E73' }}>{s.user_email || '—'}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{s.model || s.architecture || '—'}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{s.dataset}</td>
                   <td style={{ ...S.td, fontSize: 12, textAlign: 'center' }}>{s.current_round ?? 0}/{s.total_rounds || s.num_rounds}</td>
                   <td style={S.td}><StatusPill status={s.status} /></td>
-                  <td style={{ ...S.td, fontWeight: 700, color: '#059669' }}>{s.final_accuracy != null ? `${(s.final_accuracy * 100).toFixed(1)}%` : '—'}</td>
-                  <td style={{ ...S.td, fontSize: 12, color: '#9ca3af' }}>{ago(s.created_at)}</td>
+                  <td style={{ ...S.td, fontWeight: 700, color: '#1a9e3a' }}>{s.final_accuracy != null ? `${(s.final_accuracy * 100).toFixed(1)}%` : '—'}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: '#AEAEB2' }}>{ago(s.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -351,19 +351,19 @@ function AllStudies({ studies, loading }) {
 // ── Delete confirm modal ──────────────────────────────────────────────────────
 function DeleteUserModal({ user, onConfirm, onCancel }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 420, boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: 17, color: '#dc2626' }}>Delete account permanently?</h3>
-        <p style={{ margin: '0 0 6px', fontSize: 14, color: '#374151' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 420, boxShadow: '0 32px 64px rgba(0,0,0,0.2)' }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 17, color: '#FF3B30', fontWeight: 700, letterSpacing: '-0.01em' }}>Delete account permanently?</h3>
+        <p style={{ margin: '0 0 6px', fontSize: 14, color: '#1D1D1F' }}>
           This will <strong>permanently delete</strong> the Supabase account for:
         </p>
-        <p style={{ margin: '0 0 20px', fontSize: 14, fontWeight: 600, color: '#111827' }}>{user.email}</p>
-        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>
+        <p style={{ margin: '0 0 20px', fontSize: 14, fontWeight: 600, color: '#1D1D1F' }}>{user.email}</p>
+        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6E6E73' }}>
           Their studies and data remain but they will not be able to log in. This cannot be undone.
         </p>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onCancel} style={{ ...btn('#f3f4f6', '#374151'), flex: 1 }}>Cancel</button>
-          <button onClick={onConfirm} style={{ ...btn('#dc2626'), flex: 1 }}>Delete permanently</button>
+          <button onClick={onCancel} style={{ ...btn('rgba(0,0,0,0.06)', '#1D1D1F'), flex: 1 }}>Cancel</button>
+          <button onClick={onConfirm} style={{ ...btn('#FF3B30'), flex: 1 }}>Delete permanently</button>
         </div>
       </div>
     </div>
@@ -432,16 +432,16 @@ function Users({ session }) {
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
         <input placeholder="Search by name, email, institution…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...S.inp, maxWidth: 300 }} />
-        <button onClick={load} style={{ ...btn('#f3f4f6', '#6b7280', true) }}>↻ Refresh</button>
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af' }}>{filtered.length} users</span>
+        <button onClick={load} style={{ ...btn('rgba(0,0,0,0.05)', '#6E6E73', true) }}>↻ Refresh</button>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#AEAEB2' }}>{filtered.length} users</span>
       </div>
 
-      {msg && <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13,
-        background: msg.type === 'success' ? '#d1fae5' : '#fee2e2',
-        color:      msg.type === 'success' ? '#065f46' : '#991b1b' }}>{msg.text}</div>}
+      {msg && <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13, fontWeight: 500,
+        background: msg.type === 'success' ? 'rgba(50,215,75,0.1)' : 'rgba(255,59,48,0.1)',
+        color:      msg.type === 'success' ? '#1a9e3a' : '#FF3B30' }}>{msg.text}</div>}
 
       {loading ? (
-        <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>Loading…</div>
+        <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>Loading…</div>
       ) : (
         <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -449,44 +449,44 @@ function Users({ session }) {
               <tr>{['Name', 'Email', 'Institution', 'Role', 'Type', 'Status', 'Joined', 'Last sign-in', 'Actions'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
             </thead>
             <tbody>
-              {filtered.map(u => (
-                <tr key={u.id} style={{ background: u.banned ? '#fff7f7' : '#fff' }}>
+              {filtered.map((u, i) => (
+                <tr key={u.id} style={{ background: u.banned ? 'rgba(255,59,48,0.03)' : i % 2 === 0 ? '#fff' : 'rgba(0,0,0,0.015)' }}>
                   <td style={{ ...S.td, fontWeight: 600 }}>{u.full_name || '—'}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{u.email}</td>
                   <td style={{ ...S.td, fontSize: 12, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.institution || '—'}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>{u.role || '—'}</td>
                   <td style={{ ...S.td, fontSize: 12 }}>
-                    <span style={{ background: u.account_type === 'approved' ? '#dbeafe' : '#f0fdf4', color: u.account_type === 'approved' ? '#1e40af' : '#166534', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
+                    <span style={{ background: u.account_type === 'approved' ? 'rgba(0,122,255,0.1)' : 'rgba(50,215,75,0.1)', color: u.account_type === 'approved' ? '#007AFF' : '#1a9e3a', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
                       {u.account_type || 'institutional'}
                     </span>
                   </td>
                   <td style={S.td}>
                     {u.banned
-                      ? <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>banned</span>
-                      : <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>active</span>
+                      ? <span style={{ background: 'rgba(255,59,48,0.1)', color: '#FF3B30', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>banned</span>
+                      : <span style={{ background: 'rgba(50,215,75,0.1)', color: '#1a9e3a', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>active</span>
                     }
                   </td>
-                  <td style={{ ...S.td, fontSize: 12, color: '#9ca3af' }}>{ago(u.created_at)}</td>
-                  <td style={{ ...S.td, fontSize: 12, color: '#9ca3af' }}>{ago(u.last_sign_in_at)}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: '#AEAEB2' }}>{ago(u.created_at)}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: '#AEAEB2' }}>{ago(u.last_sign_in_at)}</td>
                   <td style={S.td}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {u.banned ? (
                         <button
                           onClick={() => act(u.id, 'reactivate')}
                           disabled={!!busy[u.id]}
-                          style={{ ...btn('#d1fae5', '#065f46', true) }}
+                          style={{ ...btn('rgba(50,215,75,0.1)', '#1a9e3a', true) }}
                         >{busy[u.id] === 'reactivate' ? '…' : '✓ Reactivate'}</button>
                       ) : (
                         <button
                           onClick={() => act(u.id, 'deactivate')}
                           disabled={!!busy[u.id]}
-                          style={{ ...btn('#fef3c7', '#92400e', true) }}
+                          style={{ ...btn('rgba(255,159,10,0.1)', '#FF9F0A', true) }}
                         >{busy[u.id] === 'deactivate' ? '…' : '⊘ Deactivate'}</button>
                       )}
                       <button
                         onClick={() => setDeleteTarget(u)}
                         disabled={!!busy[u.id]}
-                        style={{ ...btn('#fee2e2', '#991b1b', true) }}
+                        style={{ ...btn('rgba(255,59,48,0.1)', '#FF3B30', true) }}
                       >{busy[u.id] === 'delete' ? '…' : '✕ Delete'}</button>
                     </div>
                   </td>
@@ -552,10 +552,10 @@ export default function AdminDashboard({ session }) {
   const navTab = (id, label, badge) => (
     <button
       onClick={() => setTab(id)}
-      style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: tab === id ? 600 : 400, cursor: 'pointer', border: 'none', background: tab === id ? '#1d4ed8' : '#f3f4f6', color: tab === id ? '#fff' : '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}
+      style={{ padding: '6px 16px', borderRadius: 99, fontSize: 13, fontWeight: tab === id ? 600 : 500, cursor: 'pointer', border: 'none', background: tab === id ? '#007AFF' : 'rgba(0,0,0,0.05)', color: tab === id ? '#fff' : '#6E6E73', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.15s' }}
     >
       {label}
-      {badge > 0 && <span style={{ background: '#dc2626', color: '#fff', fontSize: 10, padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>{badge}</span>}
+      {badge > 0 && <span style={{ background: tab === id ? 'rgba(255,255,255,0.25)' : '#FF3B30', color: '#fff', fontSize: 10, padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>{badge}</span>}
     </button>
   )
 
@@ -563,12 +563,12 @@ export default function AdminDashboard({ session }) {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>Admin Dashboard</h1>
-        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>Platform management · UndosaTech Federated Research</p>
+        <h1 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 4px', letterSpacing: '-0.02em', color: '#1D1D1F' }}>Admin Dashboard</h1>
+        <p style={{ margin: 0, fontSize: 13, color: '#6E6E73' }}>Platform management · UndosaTech Federated Research</p>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
         {navTab('overview', '📊 Overview', 0)}
         {navTab('requests', '📋 Access Requests', pendingCount)}
         {navTab('studies', `🔬 All Studies`, 0)}
