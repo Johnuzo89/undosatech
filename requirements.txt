@@ -8,3 +8,4 @@ pandas==2.2.2
 medmnist==3.0.0
 websockets==13.1
 supabase==2.7.4
+resend==2.5.0

@@ -25,6 +25,8 @@ SUPABASE_URL             = os.getenv("SUPABASE_URL", "https://hpfuacpmocnsxdgbni
 SUPABASE_SERVICE_KEY     = os.getenv("SUPABASE_SERVICE_KEY", "")
 NODE_REGISTRATION_SECRET = os.getenv("NODE_REGISTRATION_SECRET", "change-me")
 ADMIN_EMAILS             = [e.strip() for e in os.getenv("ADMIN_EMAILS", "john@undosatech.com").split(",")]
+RESEND_API_KEY           = os.getenv("RESEND_API_KEY", "")
+APP_URL                  = os.getenv("APP_URL", "https://app.undosatech.com")
 
 supabase_admin = None
 store = None
@@ -132,6 +134,68 @@ def audit(study_id, event_type, data):
            "event_type": event_type, **data}
     with open(AUDIT_PATH, "a") as f:
         f.write(json.dumps(row) + "\n")
+
+
+# ── Email helpers ─────────────────────────────────────────────────────────────
+def _send_approval_email(to_email: str, full_name: str, login_url: str) -> Optional[str]:
+    """Send acceptance email from admin@undosatech.com via Resend. Returns error string or None."""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — skipping approval email")
+        return "RESEND_API_KEY not configured"
+    try:
+        import resend
+        resend.api_key = RESEND_API_KEY
+        first_name = full_name.split()[0] if full_name else "Researcher"
+        resend.Emails.send({
+            "from": "UndosaTech <admin@undosatech.com>",
+            "to": [to_email],
+            "subject": "Your UndosaTech application has been approved",
+            "html": f"""
+<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#f9fafb;margin:0;padding:32px;">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;
+              padding:40px;border:1px solid #e5e7eb;">
+    <div style="font-size:22px;font-weight:800;color:#1d4ed8;margin-bottom:4px;">
+      UndosaTech
+    </div>
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:32px;">
+      Federated Research Platform
+    </div>
+    <p style="font-size:16px;color:#111827;margin:0 0 16px;">
+      Dear {first_name},
+    </p>
+    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px;">
+      Congratulations! Your application to join the UndosaTech Federated Research
+      Platform has been <strong>accepted</strong> and your account has been created.
+    </p>
+    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 28px;">
+      Click the button below to set up your password and access the platform.
+    </p>
+    <div style="text-align:center;margin-bottom:28px;">
+      <a href="{login_url}"
+         style="display:inline-block;background:#1d4ed8;color:#fff;font-weight:700;
+                font-size:15px;padding:13px 32px;border-radius:8px;
+                text-decoration:none;">
+        Access Your Account
+      </a>
+    </div>
+    <p style="font-size:13px;color:#9ca3af;margin:0;">
+      If you have any questions, reply to this email or contact us at
+      <a href="mailto:admin@undosatech.com" style="color:#1d4ed8;">admin@undosatech.com</a>.
+    </p>
+    <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0 16px;">
+    <p style="font-size:11px;color:#d1d5db;margin:0;">
+      © UndosaTech · This link expires in 24 hours.
+    </p>
+  </div>
+</body>
+</html>""",
+        })
+        return None
+    except Exception as e:
+        logger.warning(f"Approval email failed for {to_email}: {e}")
+        return str(e)
 
 
 # ── Institutional domain detection ───────────────────────────────────────────
@@ -1182,27 +1246,38 @@ async def admin_approve_request(req_id: str, authorization: Optional[str] = Head
     except Exception as e:
         raise HTTPException(500, f"Failed to update request: {e}")
 
-    # Invite the user via Supabase (sends magic-link email)
-    invite_error = None
+    # Create account + get login link via Supabase, then send custom acceptance email
+    email_error = None
     try:
-        supabase_admin.auth.admin.invite_user_by_email(
-            req["email"],
-            {"data": {
-                "full_name": req.get("full_name", ""),
-                "institution": req.get("institution", ""),
-                "role": req.get("role", ""),
-                "account_type": "approved",
-            }}
-        )
+        link_resp = supabase_admin.auth.admin.generate_link({
+            "type": "invite",
+            "email": req["email"],
+            "options": {
+                "data": {
+                    "full_name": req.get("full_name", ""),
+                    "institution": req.get("institution", ""),
+                    "role": req.get("role", ""),
+                    "account_type": "approved",
+                },
+                "redirect_to": APP_URL,
+            },
+        })
+        login_url = getattr(getattr(link_resp, "properties", None), "action_link", None) or APP_URL
     except Exception as e:
-        invite_error = str(e)
-        logger.warning(f"Invite email failed for {req['email']}: {e}")
+        logger.warning(f"generate_link failed for {req['email']}: {e}")
+        login_url = APP_URL
+
+    email_error = _send_approval_email(
+        to_email=req["email"],
+        full_name=req.get("full_name", ""),
+        login_url=login_url,
+    )
 
     return {
         "status": "approved",
         "email": req["email"],
-        "invite_sent": invite_error is None,
-        "invite_error": invite_error,
+        "invite_sent": email_error is None,
+        "invite_error": email_error,
     }
 
 
