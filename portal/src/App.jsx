@@ -5,6 +5,7 @@ import NodeRegistry from './components/NodeRegistry'
 import MyStudies from './components/MyStudies'
 import AdminDashboard from './components/AdminDashboard'
 import StudyInvitations from './components/StudyInvitations'
+import StudyReport from './components/StudyReport'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -758,7 +759,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
           {job.num_classes&&<Stat label="Classes" value={job.num_classes}/>}
         </div>
         <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
-          {['live','chart','per-class','nodes','interpretability','audit','invitations'].map(t=><button key={t} style={tabBtn(t)} onClick={()=>setTab(t)}>{t}</button>)}
+          {['live','chart','per-class','nodes','report','audit','invitations'].map(t=><button key={t} style={tabBtn(t)} onClick={()=>setTab(t)}>{t}</button>)}
         </div>
         {tab==='live'&&<div style={S.card}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:10,display:'flex',justifyContent:'space-between'}}><span>Live training log</span><span style={{fontWeight:400,color:'#9ca3af'}}>{log.length} events · polling every 2s</span></div>
@@ -810,21 +811,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
             <span style={{background:'#ecfdf5',color:'#065f46',border:'1px solid #a7f3d0',padding:'2px 9px',borderRadius:20,fontSize:11,fontWeight:500}}>{n.governance_status}</span>
           </div>)||<div style={{...S.card,color:'#9ca3af',fontSize:13}}>Node metrics after round 1.</div>}
         </div>}
-        {tab==='interpretability'&&<div style={S.card}>
-          {job.interpretability?<>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>{job.interpretability.method}</div>
-            <div style={{fontSize:13,color:'#6b7280',marginBottom:14}}>{job.interpretability.summary}</div>
-            {job.interpretability.class_labels?.length>0&&<div style={{marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:600,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>Class labels</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:6}}>{job.interpretability.class_labels.map((l,i)=><span key={i} style={{background:'#f5f3ff',color:'#5b21b6',border:'1px solid #ddd6fe',padding:'3px 10px',borderRadius:20,fontSize:12,fontWeight:500}}>{l}</span>)}</div>
-            </div>}
-            <div style={{fontSize:11,fontWeight:600,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>Feature importance</div>
-            {job.interpretability.top_features.map((f,i)=><div key={i} style={{marginBottom:10}}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:13}}><span>{f.feature}</span><span style={{fontWeight:600,color:f.direction==='positive'?'#059669':'#dc2626'}}>{f.direction==='positive'?'+':'−'}{(f.importance*100).toFixed(1)}%</span></div>
-              <div style={{height:6,background:'#f3f4f6',borderRadius:3}}><div style={{height:'100%',width:`${f.importance*100}%`,background:f.direction==='positive'?'#1d4ed8':'#dc2626',borderRadius:3}}/></div>
-            </div>)}
-          </>:<div style={{color:'#9ca3af',fontSize:13}}>Available after training completes.</div>}
-        </div>}
+        {tab==='report'&&<StudyReport job={job}/>}
         {tab==='audit'&&<div style={S.card}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:10}}>Governance audit trail · {audit.length} events</div>
           <div style={{fontFamily:'monospace',fontSize:11,maxHeight:380,overflowY:'auto'}}>
