@@ -186,7 +186,10 @@ function AccessRequests({ session, onStatsRefresh }) {
         throw new Error(msg)
       }
       if (action === 'approve') {
-        setMsg({ type: 'success', text: `✓ Approved ${d.email}${d.invite_sent ? ' — invite email sent' : ' (invite email failed — check logs)'}` })
+        const emailNote = d.invite_sent
+          ? ' — acceptance email sent'
+          : ` — email failed: ${d.invite_error || 'unknown error'}`
+        setMsg({ type: d.invite_sent ? 'success' : 'warning', text: `✓ Approved ${d.email}${emailNote}` })
       } else {
         setMsg({ type: 'success', text: `Rejected request #${id}` })
       }
@@ -208,7 +211,9 @@ function AccessRequests({ session, onStatsRefresh }) {
         <button onClick={load} style={{ ...btn('#f3f4f6', '#6b7280', true), marginLeft: 'auto' }}>↻ Refresh</button>
       </div>
 
-      {msg && <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13, background: msg.type === 'success' ? '#d1fae5' : '#fee2e2', color: msg.type === 'success' ? '#065f46' : '#991b1b' }}>{msg.text}</div>}
+      {msg && <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13,
+        background: msg.type === 'success' ? '#d1fae5' : msg.type === 'warning' ? '#fef3c7' : '#fee2e2',
+        color:      msg.type === 'success' ? '#065f46' : msg.type === 'warning' ? '#92400e' : '#991b1b' }}>{msg.text}</div>}
 
       {loading ? (
         <div style={{ color: '#9ca3af', padding: 40, textAlign: 'center' }}>Loading…</div>
