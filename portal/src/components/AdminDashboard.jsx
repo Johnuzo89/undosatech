@@ -190,6 +190,9 @@ function AccessRequests({ session, onStatsRefresh }) {
           ? ' — acceptance email sent'
           : ` — email failed: ${d.invite_error || 'unknown error'}`
         setMsg({ type: d.invite_sent ? 'success' : 'warning', text: `✓ Approved ${d.email}${emailNote}` })
+      } else if (action === 'resend') {
+        const emailNote = d.invite_sent ? 'Email resent successfully' : `Resend failed: ${d.invite_error || 'unknown error'}`
+        setMsg({ type: d.invite_sent ? 'success' : 'warning', text: emailNote })
       } else {
         setMsg({ type: 'success', text: `Rejected request #${id}` })
       }
@@ -249,6 +252,13 @@ function AccessRequests({ session, onStatsRefresh }) {
                           style={{ ...btn('#fee2e2', '#991b1b', true) }}
                         >✗ Reject</button>
                       </div>
+                    )}
+                    {r.status === 'approved' && (
+                      <button
+                        onClick={() => act(r.id, 'resend')}
+                        disabled={!!busy[r.id]}
+                        style={{ ...btn('#eff6ff', '#1d4ed8', true) }}
+                      >{busy[r.id] === 'resend' ? '…' : '✉ Resend'}</button>
                     )}
                     {r.status === 'rejected' && r.rejection_reason && (
                       <span style={{ fontSize: 11, color: '#9ca3af' }} title={r.rejection_reason}>Reason recorded</span>

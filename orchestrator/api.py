@@ -1310,6 +1310,44 @@ async def admin_reject_request(
     return {"status": "rejected", "id": req_id}
 
 
+@app.post("/admin/access-requests/{req_id}/resend")
+async def admin_resend_invite(req_id: str, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        result = supabase_admin.table("access_requests").select("*").eq("id", req_id).single().execute()
+    except Exception as e:
+        raise HTTPException(404, f"Request not found: {e}")
+    if not result.data:
+        raise HTTPException(404, "Request not found")
+    req = result.data
+
+    # Generate a fresh password-reset link (works even if user has no password)
+    try:
+        link_resp = supabase_admin.auth.admin.generate_link({
+            "type": "recovery",
+            "email": req["email"],
+            "options": {"redirect_to": APP_URL},
+        })
+        login_url = getattr(getattr(link_resp, "properties", None), "action_link", None) or APP_URL
+    except Exception as e:
+        logger.warning(f"generate_link(recovery) failed for {req['email']}: {e}")
+        login_url = APP_URL
+
+    email_error = _send_approval_email(
+        to_email=req["email"],
+        full_name=req.get("full_name", ""),
+        login_url=login_url,
+    )
+    return {
+        "status": req.get("status"),
+        "email": req["email"],
+        "invite_sent": email_error is None,
+        "invite_error": email_error,
+    }
+
+
 @app.get("/admin/studies")
 async def admin_list_studies(authorization: Optional[str] = Header(None)):
     _require_admin(authorization)
