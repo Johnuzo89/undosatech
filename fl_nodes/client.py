@@ -431,14 +431,32 @@ if __name__ == "__main__":
     log.info("Node is live. Visible in portal at app.undosatech.com → Nodes tab.")
     log.info("Waiting for training assignments …")
 
-    # ── Keep process alive ────────────────────────────────────────────────────
-    # When the orchestrator supports real external nodes, it will call this node
-    # via its registered host:port. For now, the node stays alive to maintain
-    # its heartbeat and "Online" status in the portal.
-    #
-    # To participate in training manually (for testing):
-    #   server = os.environ.get("FLOWER_SERVER_ADDRESS", "")
-    #   if server: run_flower_client(server)
-    #
     while not _shutdown.is_set():
         _shutdown.wait(60)
+        try:
+            if _api_key:
+                resp = requests.get(
+                    f"{ORCHESTRATOR_URL}/nodes/{NODE_ID}/invitations",
+                    params={"status": "accepted"},
+                    headers={"Authorization": f"Bearer {_api_key}"},
+                    timeout=8,
+                )
+                if resp.status_code == 200:
+                    invitations = resp.json()
+                    for inv in invitations:
+                        study_id = inv.get("study_id")
+                        if study_id and not _training_active:
+                            addr_resp = requests.get(
+                                f"{ORCHESTRATOR_URL}/studies/{study_id}/flower-address",
+                                headers={"Authorization": f"Bearer {_api_key}"},
+                                timeout=8,
+                            )
+                            if addr_resp.status_code == 200:
+                                addr_data = addr_resp.json()
+                                if addr_data.get("active"):
+                                    server_addr = addr_data["server_address"]
+                                    _current_study_id = study_id
+                                    log.info("Study %s assigned — connecting to Flower at %s", study_id[:8], server_addr)
+                                    run_flower_client(server_addr)
+        except Exception as e:
+            log.warning("Assignment poll failed: %s", e)

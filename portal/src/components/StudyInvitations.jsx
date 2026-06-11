@@ -134,6 +134,8 @@ export default function StudyInvitations({ studyId, session, isAdmin }) {
   const [showModal, setShowModal] = useState(false);
   const [busy, setBusy] = useState(null); // inv id being actioned
   const [actionErr, setActionErr] = useState(null);
+  const [duaModal, setDuaModal] = useState(null);
+  const [duaText, setDuaText] = useState('');
 
   const fetch_ = useCallback(async () => {
     try {
@@ -165,6 +167,23 @@ export default function StudyInvitations({ studyId, session, isAdmin }) {
     } finally {
       setBusy(null);
     }
+  };
+
+  const handleAcceptClick = async (invId) => {
+    try {
+      const r = await fetch(`${API}/dua`, { headers: { Authorization: `Bearer ${session?.access_token}` } });
+      const res = r.ok ? await r.json() : null;
+      setDuaText(res?.text || 'By accepting, you agree to the UndosaTech Data Use Agreement. Patient data remains on-premise at all times. Only model updates are transmitted.');
+    } catch {
+      setDuaText('By accepting, you agree to the UndosaTech Data Use Agreement. Patient data remains on-premise at all times. Only model updates are transmitted.');
+    }
+    setDuaModal(invId);
+  };
+
+  const confirmAccept = async () => {
+    const invId = duaModal;
+    setDuaModal(null);
+    await doAction(invId, "accept", { dua_acknowledged: true });
   };
 
   const pending = invitations.filter(i => i.status === "pending").length;
@@ -214,7 +233,7 @@ export default function StudyInvitations({ studyId, session, isAdmin }) {
               {isAdmin && inv.status === "pending" && (
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button
-                    onClick={() => doAction(inv.id, "accept")}
+                    onClick={() => handleAcceptClick(inv.id)}
                     disabled={busy === inv.id}
                     style={{ padding: "5px 12px", background: "rgba(50,215,75,0.12)", color: "#1a9e3a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: busy === inv.id ? 0.6 : 1 }}>
                     {busy === inv.id ? "…" : "Accept"}
@@ -248,6 +267,19 @@ export default function StudyInvitations({ studyId, session, isAdmin }) {
           onClose={() => setShowModal(false)}
           onInvited={fetch_}
         />
+      )}
+
+      {duaModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, maxWidth: 560, width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Data Use Agreement</div>
+            <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.7, whiteSpace: 'pre-wrap', background: '#f9fafb', borderRadius: 8, padding: 14, marginBottom: 16, fontFamily: 'monospace' }}>{duaText}</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDuaModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button onClick={confirmAccept} style={{ padding: '8px 16px', borderRadius: 8, background: '#007AFF', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>I Acknowledge & Accept</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

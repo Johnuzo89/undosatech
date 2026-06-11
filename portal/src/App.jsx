@@ -798,23 +798,16 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
     try{await apiFetch(`/studies/${studyId}/cancel`,{method:'POST'});addLog('🛑 Stop requested','error')}
     catch(e){addLog(`Cancel failed: ${e.message}`,'error')}
   }
-  const downloadModel=async()=>{
+  const downloadModel=async(format='pt')=>{
     try{
-      const r=await fetch(`${API}/studies/${studyId}/download`,{headers:{Authorization:`Bearer ${session?.access_token}`}})
-      if(!r.ok){
-        let msg='Download failed'
-        try{const d=await r.json();msg=d.detail||msg}catch{}
-        addLog(`⬇ Download error: ${msg}`,'error')
-        alert(`Download failed: ${msg}`)
-        return
-      }
-      // If the response is a redirect (signed URL), fetch still follows it — we get the blob
+      const r=await fetch(`${API}/studies/${studyId}/download?format=${format}`,{headers:{Authorization:`Bearer ${session?.access_token}`}})
+      if(!r.ok){addLog(`Download failed: ${await r.text()}`,'error');return}
       const blob=await r.blob()
-      if(blob.size===0){alert('Downloaded file is empty — please try again');return}
       const url=URL.createObjectURL(blob)
-      const a=document.createElement('a');a.href=url;a.download=`undosatech_${job?.architecture||job?.model}_${studyId.slice(0,8)}.pt`;a.click();URL.revokeObjectURL(url)
-      addLog('⬇ Model downloaded successfully','success')
-    }catch(e){addLog(`⬇ Download error: ${e.message}`,'error');alert(`Download error: ${e.message}`)}
+      const ext=format==='onnx'?'onnx':'pt'
+      const a=document.createElement('a');a.href=url;a.download=`undosatech_${job?.architecture||job?.model}_${studyId.slice(0,8)}.${ext}`;a.click();URL.revokeObjectURL(url)
+      addLog(`⬇ Model downloaded (${format.toUpperCase()}) successfully`,'success')
+    }catch(e){addLog(`Download error: ${e.message}`,'error')}
   }
   return(
     <div>
@@ -830,11 +823,13 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
               {job.dataset&&<span style={{background:'#f5f3ff',color:'#5b21b6',border:'1px solid #ddd6fe',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{job.dataset}</span>}
               {archInfo.params&&<span style={{background:'#f9fafb',color:'#6b7280',border:'1px solid #e5e7eb',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>{archInfo.params} params</span>}
               {job.dp_enabled&&<span style={{background:'#fef3c7',color:'#92400e',border:'1px solid #fde68a',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>🔒 DP enabled</span>}
+              {job.dp_enabled&&job.dp_epsilon_spent&&<span style={{background:'rgba(52,199,89,0.1)',color:'#34C759',border:'1px solid rgba(52,199,89,0.2)',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600,marginLeft:4}}>ε={job.dp_epsilon_spent} spent</span>}
+              {job.status==='queued'&&<div style={{fontSize:12,color:'#6E6E73',background:'rgba(0,0,0,0.05)',borderRadius:8,padding:'4px 10px'}}>Queue position #{job.queue_position||'?'}</div>}
             </div>
           </div>
           <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:8}}>
             {job.final_accuracy!=null&&<div style={{textAlign:'right'}}><div style={{fontSize:36,fontWeight:800,color:'#059669',lineHeight:1}}>{(job.final_accuracy*100).toFixed(1)}%</div><div style={{fontSize:11,color:'#9ca3af'}}>final accuracy</div></div>}
-            {job.status==='completed'&&<button onClick={downloadModel} style={{padding:'7px 14px',background:'#059669',color:'#fff',borderRadius:8,fontSize:12,fontWeight:600,border:'none',cursor:'pointer'}}>⬇ Download model</button>}
+            {job.status==='completed'&&<div style={{display:'flex',gap:6}}><button onClick={()=>downloadModel('pt')} style={{padding:'7px 14px',background:'#059669',color:'#fff',borderRadius:8,fontSize:12,fontWeight:600,border:'none',cursor:'pointer'}}>⬇ Download model</button><button onClick={()=>downloadModel('onnx')} style={{padding:'7px 14px',background:'#5856D6',color:'#fff',borderRadius:8,fontSize:12,fontWeight:600,border:'none',cursor:'pointer'}}>⬇ ONNX</button></div>}
             {['running','pending'].includes(job.status)&&<button onClick={cancelStudy} style={{padding:'7px 14px',background:'#dc2626',color:'#fff',borderRadius:8,fontSize:12,fontWeight:600,border:'none',cursor:'pointer'}}>🛑 Stop training</button>}
           </div>
         </div>
@@ -857,6 +852,18 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
         </div>
         {tab==='live'&&<div style={S.card}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:10,display:'flex',justifyContent:'space-between'}}><span>Live training log</span><span style={{fontWeight:400,color:'#9ca3af'}}>{log.length} events · polling every 2s</span></div>
+          {job.training_health&&job.status==='running'&&(
+            <div style={{
+              background:job.training_health.status==='diverging'?'rgba(255,59,48,0.08)':job.training_health.status==='plateau'?'rgba(255,149,0,0.08)':'rgba(52,199,89,0.08)',
+              border:`1px solid ${job.training_health.status==='diverging'?'rgba(255,59,48,0.2)':job.training_health.status==='plateau'?'rgba(255,149,0,0.2)':'rgba(52,199,89,0.2)'}`,
+              borderRadius:10,padding:'8px 12px',marginBottom:10,fontSize:12,fontWeight:500,
+              color:job.training_health.status==='diverging'?'#FF3B30':job.training_health.status==='plateau'?'#FF9500':'#34C759',
+              display:'flex',alignItems:'center',gap:6,
+            }}>
+              {job.training_health.status==='diverging'?'⚠':job.training_health.status==='plateau'?'📊':'✓'}
+              <span><strong>Training health:</strong> {job.training_health.details}</span>
+            </div>
+          )}
           <div ref={logRef} style={{fontFamily:'monospace',fontSize:12,maxHeight:400,overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>
             {log.map((l,i)=><div key={i} style={{display:'flex',gap:10}}><span style={{color:'#d1d5db',flexShrink:0}}>{l.ts}</span><span style={{color:logCol[l.type]||'#374151'}}>{l.msg}</span></div>)}
           </div>
@@ -907,7 +914,13 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
         </div>}
         {tab==='report'&&<StudyReport job={job}/>}
         {tab==='audit'&&<div style={S.card}>
-          <div style={{fontSize:12,fontWeight:600,marginBottom:10}}>Governance audit trail · {audit.length} events</div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <div style={{fontSize:12,fontWeight:600}}>Governance audit trail · {audit.length} events</div>
+            {audit.length>0&&<button onClick={()=>{
+              fetch(`${API}/studies/${studyId}/audit/export`,{headers:{Authorization:`Bearer ${session?.access_token}`}})
+                .then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`audit_${studyId.slice(0,8)}.csv`;a.click()})
+            }} style={{padding:'5px 12px',background:'rgba(0,122,255,0.08)',color:'#007AFF',border:'1px solid rgba(0,122,255,0.2)',borderRadius:8,fontSize:12,fontWeight:500,cursor:'pointer'}}>Export CSV</button>}
+          </div>
           <div style={{fontFamily:'monospace',fontSize:11,maxHeight:380,overflowY:'auto'}}>
             {audit.length===0?<span style={{color:'#9ca3af'}}>Available after training completes.</span>:
               audit.slice().reverse().map(e=><div key={e.event_id} style={{padding:'5px 0',borderBottom:'1px solid #f3f4f6',display:'flex',gap:10}}>

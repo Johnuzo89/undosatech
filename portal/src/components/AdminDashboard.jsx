@@ -508,6 +508,72 @@ function Users({ session }) {
   )
 }
 
+// ── Node Health tab ───────────────────────────────────────────────────────────
+function NodeHealth({ session }) {
+  const [nodes, setNodes] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${API}/nodes/list`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+      if (res.ok) setNodes(await res.json())
+    } catch (_) {}
+    finally { setLoading(false) }
+  }, [session])
+
+  useEffect(() => { load() }, [load])
+
+  function agoMin(iso) {
+    if (!iso) return null
+    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+    if (m < 1) return 'just now'
+    if (m < 60) return `${m}m ago`
+    return `${Math.floor(m/60)}h ago`
+  }
+
+  const dot = (conn) => ({
+    online:      '#32D74B',
+    degraded:    '#FF9F0A',
+    unreachable: '#FF3B30',
+  }[conn] || '#8E8E93')
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{nodes.length} registered nodes</div>
+        <button onClick={load} style={{ ...btn('rgba(0,0,0,0.05)', '#6E6E73', true) }}>↻ Refresh</button>
+      </div>
+      {loading ? (
+        <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>Loading…</div>
+      ) : nodes.length === 0 ? (
+        <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>No nodes registered.</div>
+      ) : (
+        nodes.map(n => {
+          const lastSeen = agoMin(n.last_heartbeat)
+          const offlineWarn = n.last_heartbeat && (Date.now() - new Date(n.last_heartbeat).getTime()) > 10 * 60000
+          return (
+            <div key={n.node_id} style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: dot(n.connectivity), flexShrink: 0, boxShadow: `0 0 5px ${dot(n.connectivity)}` }} />
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{n.institution_name}</div>
+                <div style={{ fontSize: 11, color: '#8E8E93' }}>{n.node_id} · {n.institution_domain}</div>
+              </div>
+              <div style={{ fontSize: 12, color: '#6E6E73', minWidth: 100, textAlign: 'right' }}>
+                {lastSeen ? `Last seen ${lastSeen}` : 'Never connected'}
+              </div>
+              <StatusPill status={n.status} />
+              {offlineWarn && (
+                <span style={{ fontSize: 11, color: '#FF3B30', background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.2)', borderRadius: 8, padding: '2px 8px', fontWeight: 600 }}>Offline &gt;10 min</span>
+              )}
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
 // ── Main AdminDashboard ───────────────────────────────────────────────────────
 export default function AdminDashboard({ session }) {
   const [tab, setTab] = useState('overview')
@@ -573,6 +639,7 @@ export default function AdminDashboard({ session }) {
         {navTab('requests', '📋 Access Requests', pendingCount)}
         {navTab('studies', `🔬 All Studies`, 0)}
         {navTab('users', '👥 Users', 0)}
+        {navTab('health', '🟢 Node Health', 0)}
       </div>
 
       {tab === 'overview' && (
@@ -596,6 +663,7 @@ export default function AdminDashboard({ session }) {
       )}
 
       {tab === 'users' && <Users session={session} />}
+      {tab === 'health' && <NodeHealth session={session} />}
     </div>
   )
 }
