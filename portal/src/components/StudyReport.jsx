@@ -479,6 +479,11 @@ export default function StudyReport({ job }) {
           <div style={{ minWidth: 160 }}>
             <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3 }}>Federated (micro)</div>
             <div style={{ fontSize: 44, fontWeight: 800, color: '#059669', lineHeight: 1 }}>{pct}%</div>
+            {job.confidence_intervals?.accuracy && (
+              <div style={{ fontSize: 11, color: '#6E6E73', marginTop: 3 }}>
+                95% CI: [{(job.confidence_intervals.accuracy.ci_lower * 100).toFixed(1)}% – {(job.confidence_intervals.accuracy.ci_upper * 100).toFixed(1)}%]
+              </div>
+            )}
             {macroAcc && (
               <div style={{ fontSize: 13, color: '#1d4ed8', marginTop: 4 }}>Macro avg: <strong>{macroAcc}%</strong></div>
             )}
@@ -697,8 +702,9 @@ export default function StudyReport({ job }) {
           <strong>Rounds:</strong> {totalRounds} global rounds
           {job.local_epochs ? ` × ${job.local_epochs} local epoch${job.local_epochs !== 1 ? 's' : ''}` : ''}.{' '}
           {job.dp_enabled
-            ? `Differential privacy applied (ε = ${job.dp_epsilon}, δ = ${job.dp_delta}, σ = ${job.dp_noise_multiplier}).`
+            ? `Differential privacy applied (ε = ${job.dp_epsilon_spent ?? job.dp_epsilon}, δ = ${job.dp_delta}, σ = ${job.dp_noise_multiplier}).`
             : 'No differential privacy applied in this study.'}
+          {job.confidence_intervals?.f1 && ` F1 macro 95% CI: [${(job.confidence_intervals.f1.ci_lower).toFixed(3)} – ${(job.confidence_intervals.f1.ci_upper).toFixed(3)}].`}
         </p>
         <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
           Study ID: {job.study_id || job.id} · Completed: {job.completed_at ? new Date(job.completed_at).toLocaleString() : '—'}

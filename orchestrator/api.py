@@ -1,7 +1,7 @@
 """
 UndosaTech Orchestrator v6 — Persistent Supabase storage + Node Registry
 """
-import json, logging, uuid, shutil, threading, os, hashlib, hmac, secrets
+import json, logging, uuid, shutil, threading, os, hashlib, hmac, secrets, math, time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -28,6 +28,25 @@ ADMIN_EMAILS             = [e.strip() for e in os.getenv("ADMIN_EMAILS", "john@u
 RESEND_API_KEY           = os.getenv("RESEND_API_KEY", "")
 APP_URL                  = os.getenv("APP_URL", "https://app.undosatech.com")
 
+DUA_TEXT = """DATA USE AGREEMENT — UndosaTech Federated Learning Platform v1.0
+
+By participating in this federated study, your institution agrees that:
+
+1. DATA SOVEREIGNTY: All patient data remains on-premise within your institution's infrastructure at all times. Only encrypted model weight updates are transmitted.
+
+2. PURPOSE LIMITATION: Data contributed to this study will be used solely for the stated research purpose and will not be repurposed without separate IRB approval and researcher consent.
+
+3. ANONYMISATION: You confirm that all locally held data has been de-identified in accordance with NHS Information Governance Toolkit, GDPR Article 89, and/or applicable national regulations.
+
+4. AUDIT & ACCOUNTABILITY: Your institution acknowledges that participation is recorded in an immutable audit trail for regulatory compliance.
+
+5. WITHDRAWAL: Your institution may withdraw at any time before training begins by declining the invitation. Post-training withdrawal does not affect aggregated model weights already computed.
+
+6. CONTACT: Governance questions: support@undosatech.com"""
+
+FLOWER_PORT = int(os.environ.get("FLOWER_SERVER_PORT", "8001"))
+_flower_servers: dict = {}  # study_id -> thread
+
 supabase_admin = None
 store = None
 
@@ -44,6 +63,56 @@ if SUPABASE_SERVICE_KEY:
 # In-memory fallback (used if Supabase not configured)
 jobs: Dict[str, dict] = {}
 stop_events: Dict[str, bool] = {}
+
+_study_queue: list = []
+_queue_lock = threading.Lock()
+MAX_CONCURRENT_STUDIES = int(os.environ.get("MAX_CONCURRENT_STUDIES", "1"))
+
+
+def _enqueue_study(study_id: str):
+    with _queue_lock:
+        _study_queue.append(study_id)
+
+
+def _queue_processor():
+    while True:
+        time.sleep(10)
+        with _queue_lock:
+            if not _study_queue:
+                continue
+            running_count = sum(1 for j in jobs.values() if j.get("status") == "running")
+            if running_count >= MAX_CONCURRENT_STUDIES:
+                continue
+            next_id = _study_queue.pop(0)
+
+        study = jobs.get(next_id)
+        if not study or study.get("status") != "queued":
+            continue
+
+        logger.info(f"[queue] Starting queued study {next_id[:8]}")
+        j = jobs[next_id]
+        upload_fn = j.get("upload_filename")
+        upload_path = None
+        if upload_fn:
+            for suffix in [".npz", ".csv", ".zip", ".dcm", ".dicom", ".jpg", ".png", ".bin"]:
+                cand = UPLOADS_DIR / f"{next_id}{suffix}"
+                if cand.exists():
+                    upload_path = cand
+                    break
+        t = threading.Thread(
+            target=train_thread,
+            args=(next_id, upload_path, j.get("dataset","octmnist"),
+                  j.get("num_rounds",5), j.get("local_epochs",2),
+                  j.get("architecture","resnet18"), j.get("nodes",[]),
+                  j.get("dp_noise_multiplier")),
+            daemon=True,
+            name=f"train-{next_id[:8]}"
+        )
+        t.start()
+
+
+_queue_thread = threading.Thread(target=_queue_processor, daemon=True, name="queue-processor")
+_queue_thread.start()
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -109,7 +178,24 @@ def _download_model_from_storage(storage_key: str) -> Optional[bytes]:
 @asynccontextmanager
 async def lifespan(app):
     _ensure_model_bucket()
-    if store:
+    if store and supabase_admin:
+        try:
+            result = supabase_admin.table("studies").select("*").eq("status", "running").execute()
+            interrupted = result.data or []
+            for study in interrupted:
+                sid = study.get("study_id") or study.get("id")
+                if not sid:
+                    continue
+                ckpt = _load_latest_checkpoint(sid)
+                if not ckpt:
+                    store.set_failed(sid, "Server restarted — no checkpoint found. Please re-run the study.")
+                    logger.warning(f"[{sid[:8]}] No checkpoint — marked failed")
+                else:
+                    logger.info(f"[{sid[:8]}] Recovering from round {ckpt['round']}")
+                    store.set_failed(sid, f"Recovered: server restarted after round {ckpt['round']}. Re-launch to continue from checkpoint (auto-resume coming soon).")
+        except Exception as e:
+            logger.warning(f"Recovery scan failed: {e}")
+    elif store:
         try:
             interrupted = store.list_running()
             for s in interrupted:
@@ -490,6 +576,132 @@ def _apply_dp_to_update(global_state: dict, local_state: dict, noise_multiplier:
 
     return noised_state
 
+
+def _compute_rdp_epsilon(sigma: float, num_rounds: int, delta: float = 1e-5) -> float:
+    """Gaussian mechanism RDP → (ε,δ)-DP via optimal alpha search."""
+    best = float("inf")
+    for alpha in range(2, 512):
+        rdp = num_rounds * alpha / (2 * sigma ** 2)
+        eps = rdp + math.log(1 - 1/alpha) - (math.log(delta) + math.log(1 - 1/alpha)) / (alpha - 1)
+        if eps < best:
+            best = eps
+    return round(best, 4)
+
+
+def _check_convergence(round_results: list) -> dict:
+    if len(round_results) < 3:
+        return {"status": "healthy", "details": "Warming up"}
+    recent_acc  = [r["global_accuracy"] for r in round_results[-3:]]
+    recent_loss = [r["global_loss"]     for r in round_results[-3:]]
+    if recent_loss[2] > recent_loss[1] > recent_loss[0]:
+        return {"status": "diverging",
+                "details": f"Loss rising {recent_loss[0]:.4f}→{recent_loss[2]:.4f} — check LR or data"}
+    if (recent_acc[2] - recent_acc[0]) < 0.005:
+        return {"status": "plateau",
+                "details": f"Accuracy flat at ~{recent_acc[2]:.1%} for 3 rounds"}
+    return {"status": "healthy",
+            "details": f"+{(recent_acc[2]-recent_acc[0]):.1%} over last 3 rounds"}
+
+
+def _bootstrap_ci(values: list, n_bootstrap: int = 500, confidence: float = 0.95) -> tuple:
+    import random as _rng
+    n = len(values)
+    if n < 2:
+        v = values[0] if values else 0.0
+        return round(v, 4), round(v, 4), round(v, 4)
+    means = []
+    for _ in range(n_bootstrap):
+        sample = _rng.choices(values, k=n)
+        means.append(sum(sample) / n)
+    means.sort()
+    alpha = (1 - confidence) / 2
+    lo = means[int(n_bootstrap * alpha)]
+    hi = means[int(n_bootstrap * (1 - alpha))]
+    return round(sum(values)/n, 4), round(lo, 4), round(hi, 4)
+
+
+def _save_round_checkpoint(study_id: str, rnd: int, model_state: dict, round_results: list):
+    try:
+        import torch, io as _io
+        buf = _io.BytesIO()
+        torch.save({"round": rnd, "model_state": model_state, "round_results": round_results}, buf)
+        buf.seek(0)
+        if supabase_admin:
+            key = f"{study_id}/checkpoint_r{rnd:03d}.pt"
+            supabase_admin.storage.from_("models").upload(key, buf.read(),
+                {"content-type": "application/octet-stream", "upsert": "true"})
+        else:
+            fp = WEIGHTS_DIR / f"study_{study_id}_ckpt_r{rnd}.pt"
+            with open(fp, "wb") as f:
+                f.write(buf.getvalue())
+    except Exception as e:
+        logger.warning(f"[{study_id[:8]}] Checkpoint save failed r{rnd}: {e}")
+
+
+def _load_latest_checkpoint(study_id: str) -> Optional[dict]:
+    try:
+        import torch, io as _io
+        if supabase_admin:
+            files = supabase_admin.storage.from_("models").list(study_id)
+            ckpt_files = sorted([f["name"] for f in (files or []) if "checkpoint_r" in f["name"]], reverse=True)
+            if not ckpt_files:
+                return None
+            data = supabase_admin.storage.from_("models").download(f"{study_id}/{ckpt_files[0]}")
+            return torch.load(_io.BytesIO(data), map_location="cpu", weights_only=False)
+        else:
+            import glob
+            files = sorted(glob.glob(str(WEIGHTS_DIR / f"study_{study_id}_ckpt_r*.pt")), reverse=True)
+            if not files:
+                return None
+            return torch.load(files[0], map_location="cpu", weights_only=False)
+    except Exception as e:
+        logger.warning(f"[{study_id[:8]}] Checkpoint load failed: {e}")
+        return None
+
+
+def _run_flower_server(study_id: str, num_rounds: int, num_clients: int, arch: str,
+                       num_classes: int, in_ch: int, dp_noise_multiplier: Optional[float] = None):
+    try:
+        import flwr as fl
+        import numpy as np
+
+        class _DPFedAvg(fl.server.strategy.FedAvg):
+            def aggregate_fit(self, server_round, results, failures):
+                agg = super().aggregate_fit(server_round, results, failures)
+                if agg and dp_noise_multiplier:
+                    params, metrics = agg
+                    ndarrays = fl.common.parameters_to_ndarrays(params)
+                    noised = []
+                    for arr in ndarrays:
+                        if arr.dtype.kind == 'f':
+                            noise = np.random.normal(0, dp_noise_multiplier, arr.shape).astype(arr.dtype)
+                            noised.append(arr + noise)
+                        else:
+                            noised.append(arr)
+                    return fl.common.ndarrays_to_parameters(noised), metrics
+                return agg
+
+        strategy = _DPFedAvg(
+            fraction_fit=1.0,
+            fraction_evaluate=1.0,
+            min_fit_clients=num_clients,
+            min_evaluate_clients=num_clients,
+            min_available_clients=num_clients,
+        )
+
+        server_address = f"0.0.0.0:{FLOWER_PORT}"
+        logger.info(f"[{study_id[:8]}] Starting Flower server on {server_address} for {num_clients} clients")
+        fl.server.start_server(
+            server_address=server_address,
+            config=fl.server.ServerConfig(num_rounds=num_rounds),
+            strategy=strategy,
+        )
+    except Exception as e:
+        logger.error(f"[{study_id[:8]}] Flower server error: {e}")
+    finally:
+        _flower_servers.pop(study_id, None)
+
+
 # ── Training thread ───────────────────────────────────────────────────────────
 def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, arch, nodes_config, dp_noise_multiplier=None):
     import torch, torch.nn as nn, torch.optim as optim
@@ -535,7 +747,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
         if dp_noise_multiplier:
             dp_epsilon = round(1.0 / dp_noise_multiplier, 4)
-            log(f"🔒 Differential privacy ACTIVE — σ={dp_noise_multiplier}, ε≈{dp_epsilon}, C=1.0 (NHS IG / GDPR compliant)")
+            log(f"🔒 Differential privacy ACTIVE — σ={dp_noise_multiplier}, ε_rdp≈{dp_epsilon} (approx), C=1.0 (NHS IG / GDPR compliant)")
             update_job(dp_enabled=True, dp_noise_multiplier=dp_noise_multiplier,
                        dp_epsilon=dp_epsilon, dp_delta=1e-5)
 
@@ -688,7 +900,20 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 "node_metrics": node_metrics,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            if dp_noise_multiplier:
+                spent_eps = _compute_rdp_epsilon(dp_noise_multiplier, rnd, delta=1e-5)
+                update_job(dp_epsilon_spent=spent_eps)
+                summary["dp_epsilon_spent"] = spent_eps
+
+            health = _check_convergence(round_results + [summary])
+            summary["training_health"] = health
             round_results.append(summary)
+            update_job(training_health=health)
+
+            if health["status"] == "diverging":
+                log(f"⚠ Convergence warning: {health['details']}", level="warning", round_number=rnd)
+            elif health["status"] == "plateau":
+                log(f"📊 Plateau detected: {health['details']}", level="info", round_number=rnd)
 
             if store:
                 store.record_round(study_id, rnd, accuracy=g_acc, loss=g_loss,
@@ -696,9 +921,26 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             else:
                 jobs[study_id]["round_results"] = round_results
 
+            _save_round_checkpoint(study_id, rnd,
+                {k: v.clone() for k, v in node_models[0].state_dict().items()},
+                round_results)
+
             audit(study_id, "round_completed", {"round": rnd, "global_accuracy": g_acc})
             log(f"Round {rnd} complete — global acc={g_acc:.3f} loss={g_loss:.4f}",
                 round_number=rnd, metrics={"accuracy": g_acc, "loss": g_loss})
+
+        accs = [r["global_accuracy"] for r in round_results]
+        f1s  = [
+            sum(r["per_class_metrics"][c]["f1"] for c in r["per_class_metrics"]) / max(len(r["per_class_metrics"]), 1)
+            for r in round_results
+        ]
+        _, acc_ci_lo, acc_ci_hi = _bootstrap_ci(accs)
+        _, f1_ci_lo,  f1_ci_hi  = _bootstrap_ci(f1s)
+        ci_summary = {
+            "accuracy": {"mean": accs[-1], "ci_lower": acc_ci_lo, "ci_upper": acc_ci_hi, "confidence": 0.95},
+            "f1":       {"mean": round(f1s[-1], 4), "ci_lower": f1_ci_lo, "ci_upper": f1_ci_hi, "confidence": 0.95},
+        }
+        update_job(confidence_intervals=ci_summary)
 
         # Save model locally then upload to Supabase Storage for persistence
         fp = WEIGHTS_DIR / f"study_{study_id}_{arch}_final.pt"
@@ -949,12 +1191,42 @@ async def create_study(
                 except Exception as e:
                     logger.warning(f"Auto-invite for node {nid} failed: {e}")
 
-    t = threading.Thread(
-        target=train_thread,
-        args=(study_id, upload_path, dataset, num_rounds, local_epochs, architecture, nodes_config, dp_noise_multiplier),
-        daemon=True
-    )
-    t.start()
+    SIM_SUFFIXES_CHECK = ("-sim",)
+    real_nodes = [n for n in (nodes_config or [])
+                  if not any((n.get("node_id","") if isinstance(n,dict) else str(n)).endswith(s) for s in SIM_SUFFIXES_CHECK)]
+
+    def _launch_training_now():
+        t = threading.Thread(
+            target=train_thread,
+            args=(study_id, upload_path, dataset, num_rounds, local_epochs, architecture, nodes_config, dp_noise_multiplier),
+            daemon=True,
+            name=f"train-{study_id[:8]}"
+        )
+        t.start()
+        if real_nodes:
+            ft = threading.Thread(
+                target=_run_flower_server,
+                args=(study_id, num_rounds, len(real_nodes), architecture, 10, 1, dp_noise_multiplier),
+                daemon=True,
+                name=f"flower-{study_id[:8]}"
+            )
+            ft.start()
+            _flower_servers[study_id] = ft
+
+    with _queue_lock:
+        running_count = sum(1 for j in jobs.values() if j.get("status") == "running")
+
+    if running_count >= MAX_CONCURRENT_STUDIES:
+        jobs[study_id]["status"] = "queued"
+        queue_position = len(_study_queue) + 1
+        jobs[study_id]["queue_position"] = queue_position
+        _enqueue_study(study_id)
+        if store:
+            store.update(study_id, status="queued", queue_position=queue_position)
+        logger.info(f"[queue] Study {study_id[:8]} queued at position {queue_position}")
+    else:
+        _launch_training_now()
+
     logger.info(f"[{study_id[:8]}] Study created — {architecture}")
     return {"study_id": study_id, "status": "pending"}
 
@@ -1029,8 +1301,69 @@ def get_audit(study_id: str):
     return {"study_id": study_id, "events": events}
 
 
+@app.get("/studies/{study_id}/audit/export")
+async def export_audit_csv(study_id: str, authorization: Optional[str] = Header(None)):
+    from fastapi.responses import StreamingResponse
+    import csv, io as _io
+    _require_user(authorization)
+
+    events = []
+    if store:
+        try:
+            result = supabase_admin.table("audit_logs").select("*").eq("study_id", study_id).order("created_at").execute()
+            events = result.data or []
+        except Exception:
+            events = []
+    else:
+        job = jobs.get(study_id, {})
+        events = job.get("audit_events", [])
+
+    if not events and AUDIT_PATH.exists():
+        for line in AUDIT_PATH.read_text().splitlines():
+            try:
+                e = json.loads(line)
+                if e.get("study_id") == study_id:
+                    events.append(e)
+            except:
+                pass
+
+    buf = _io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["event_id", "event_type", "timestamp", "data"])
+    for e in events:
+        writer.writerow([
+            e.get("id", e.get("event_id", "")),
+            e.get("event_type", ""),
+            e.get("created_at", e.get("timestamp", "")),
+            json.dumps(e.get("data", e.get("metadata", {})))
+        ])
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="audit_{study_id[:8]}.csv"'}
+    )
+
+
+@app.get("/dua")
+async def get_dua():
+    return {"text": DUA_TEXT, "version": "1.0", "requires_acknowledgment": True}
+
+
+@app.get("/studies/{study_id}/flower-address")
+async def get_flower_address(study_id: str, authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    host = os.environ.get("RAILWAY_PUBLIC_DOMAIN", os.environ.get("FLOWER_PUBLIC_HOST", "localhost"))
+    return {
+        "server_address": f"{host}:{FLOWER_PORT}",
+        "study_id": study_id,
+        "active": study_id in _flower_servers,
+    }
+
+
 @app.get("/studies/{study_id}/download")
-def download_model(study_id: str):
+def download_model(study_id: str, format: str = Query("pt"), authorization: Optional[str] = Header(None)):
     from fastapi.responses import FileResponse, Response
 
     if store:
@@ -1049,6 +1382,48 @@ def download_model(study_id: str):
     status = job.get("status")
     if status != "completed":
         raise HTTPException(400, f"Training not complete (status: {status})")
+
+    if format == "onnx":
+        import io as _io2, torch
+        arch = job.get("architecture") or job.get("model", "model")
+        info_path = WEIGHTS_DIR / f"study_{study_id}_model_info.json"
+        num_classes, in_ch = 10, 1
+        if info_path.exists():
+            with open(info_path) as f:
+                mi = json.load(f)
+            num_classes = mi.get("num_classes", 10)
+            in_ch = mi.get("in_channels", 1)
+
+        weights_data = None
+        mp = job.get("model_path") or job.get("model_download_path")
+        if mp and Path(mp).exists():
+            with open(mp, "rb") as f:
+                weights_data = f.read()
+        if not weights_data and supabase_admin:
+            for key in filter(None, [job.get("model_storage_key"), f"{study_id}/{arch}_final.pt"]):
+                weights_data = _download_model_from_storage(key)
+                if weights_data:
+                    break
+
+        if not weights_data:
+            raise HTTPException(404, "Model weights not found")
+
+        state_dict = torch.load(_io2.BytesIO(weights_data), map_location="cpu", weights_only=True)
+        model = build_model(num_classes, in_ch, arch)
+        model.load_state_dict(state_dict, strict=False)
+        model.eval()
+
+        dummy = torch.zeros(1, in_ch, 28, 28)
+        onnx_buf = _io2.BytesIO()
+        torch.onnx.export(model, dummy, onnx_buf, opset_version=17,
+                          input_names=["input"], output_names=["logits"],
+                          dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}})
+        onnx_filename = f"undosatech_{arch}_{study_id[:8]}.onnx"
+        return Response(
+            content=onnx_buf.getvalue(),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{onnx_filename}"'},
+        )
 
     arch = job.get("architecture") or job.get("model", "model")
     filename = f"undosatech_{arch}_{study_id[:8]}.pt"
@@ -1707,6 +2082,9 @@ async def accept_invitation(
     if inv["status"] != "pending":
         raise HTTPException(400, f"Invitation is already {inv['status']}")
 
+    if not body.get("dua_acknowledged"):
+        raise HTTPException(400, "Data Use Agreement must be acknowledged before accepting")
+
     api_key = body.get("api_key")
     if api_key:
         if not _verify_node_api_key(inv["node_id"], api_key):
@@ -1719,6 +2097,7 @@ async def accept_invitation(
     supabase_admin.table("study_invitations").update({
         "status": "accepted",
         "responded_at": datetime.now(timezone.utc).isoformat(),
+        "dua_acknowledged_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", inv_id).execute()
     return {"status": "accepted", "invitation_id": inv_id, "study_id": inv["study_id"]}
 
