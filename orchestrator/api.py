@@ -27,6 +27,7 @@ NODE_REGISTRATION_SECRET = os.getenv("NODE_REGISTRATION_SECRET", "change-me")
 ADMIN_EMAILS             = [e.strip() for e in os.getenv("ADMIN_EMAILS", "john@undosatech.com").split(",")]
 RESEND_API_KEY           = os.getenv("RESEND_API_KEY", "")
 APP_URL                  = os.getenv("APP_URL", "https://app.undosatech.com")
+MAX_SAMPLES_PER_PARTITION = int(os.getenv("MAX_SAMPLES_PER_PARTITION", "5000"))
 
 DUA_TEXT = """DATA USE AGREEMENT — UndosaTech Federated Learning Platform v1.0
 
@@ -397,7 +398,7 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
             tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5]*in_ch, [0.5]*in_ch)])
             train_ds = DataClass(split="train", transform=tf, download=True, root=str(UPLOADS_DIR))
             test_ds  = DataClass(split="test",  transform=tf, download=True, root=str(UPLOADS_DIR))
-            n = min(len(train_ds) // num_partitions, 5000)
+            n = min(len(train_ds) // num_partitions, MAX_SAMPLES_PER_PARTITION)
             train_ds = Subset(train_ds, list(range(partition_id*n, min((partition_id+1)*n, len(train_ds)))))
             desc = f"{cls_name}: {len(train_ds)} train / {len(test_ds)} test · {n_cls} classes"
             return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
