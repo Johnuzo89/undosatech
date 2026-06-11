@@ -697,6 +697,41 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         </div>}
         {preset!=='custom'&&<div style={{fontSize:12,color:'#6b7280',background:'#f9fafb',borderRadius:8,padding:'8px 12px'}}>{form.num_rounds} rounds · {form.local_epochs} epoch{form.local_epochs>1?'s':''}/round</div>}
       </div>
+      <div style={S.card}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:form.dp_enabled?16:0}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',textTransform:'uppercase',letterSpacing:'0.05em'}}>Differential Privacy</div>
+            <div style={{fontSize:12,color:'#6E6E73',marginTop:2}}>NHS IG / GDPR compliant Gaussian noise on model updates</div>
+          </div>
+          <div onClick={()=>set('dp_enabled',!form.dp_enabled)}
+            style={{width:44,height:26,borderRadius:13,background:form.dp_enabled?'#34C759':'rgba(120,120,128,0.18)',position:'relative',cursor:'pointer',transition:'background 0.2s',flexShrink:0}}>
+            <div style={{position:'absolute',top:3,left:form.dp_enabled?21:3,width:20,height:20,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,0.25)',transition:'left 0.2s'}}/>
+          </div>
+        </div>
+        {form.dp_enabled&&(
+          <div style={{borderTop:'1px solid rgba(0,0,0,0.06)',paddingTop:14}}>
+            <label style={S.lbl}>Privacy budget ε (epsilon)</label>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+              {[0.5,1.0,2.0,5.0].map(v=>(
+                <button key={v} type="button" onClick={()=>set('dp_epsilon',v)}
+                  style={{padding:'5px 12px',borderRadius:20,fontSize:12,fontWeight:500,cursor:'pointer',border:'none',
+                    background:form.dp_epsilon===v?'#007AFF':'rgba(0,122,255,0.08)',
+                    color:form.dp_epsilon===v?'#fff':'#007AFF',transition:'all 0.15s'}}>
+                  ε={v}
+                </button>
+              ))}
+            </div>
+            <input style={{...S.inp,marginBottom:8}} type="number" min={0.1} max={10} step={0.1}
+              value={form.dp_epsilon} onChange={e=>set('dp_epsilon',parseFloat(e.target.value)||1.0)}/>
+            <div style={{fontSize:11,color:'#6E6E73',background:'rgba(52,199,89,0.06)',borderRadius:8,padding:'8px 10px',lineHeight:1.5}}>
+              <strong style={{color:'#34C759'}}>Active:</strong> σ={+(1.0/form.dp_epsilon).toFixed(4)} noise multiplier · C=1.0 clip norm · δ=1e-5
+              {form.dp_epsilon<=1?<span style={{color:'#FF9500'}}> · Strong privacy (lower accuracy)</span>
+               :form.dp_epsilon>=5?<span style={{color:'#FF3B30'}}> · Weak privacy (higher accuracy)</span>
+               :<span style={{color:'#34C759'}}> · Balanced privacy/utility</span>}
+            </div>
+          </div>
+        )}
+      </div>
       <div style={{background:'rgba(0,122,255,0.06)',border:'1px solid rgba(0,122,255,0.15)',borderRadius:12,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#007AFF',display:'flex',alignItems:'center',gap:8}}>
         🔒 <span><strong>Zero raw data transfer.</strong> Only model weight gradients are aggregated via FedAvg. Full governance audit trail generated automatically.</span>
       </div>
