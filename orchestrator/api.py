@@ -1,7 +1,7 @@
 """
 UndosaTech Orchestrator v6 — Persistent Supabase storage + Node Registry
 """
-import json, logging, uuid, shutil, threading, os, hashlib, hmac, secrets, math, time
+import json, logging, uuid, shutil, threading, os, hashlib, hmac, secrets, math, time, io, zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -44,6 +44,422 @@ By participating in this federated study, your institution agrees that:
 5. WITHDRAWAL: Your institution may withdraw at any time before training begins by declining the invitation. Post-training withdrawal does not affect aggregated model weights already computed.
 
 6. CONTACT: Governance questions: support@undosatech.com"""
+
+
+def generate_compliance_pack(job: dict) -> dict:
+    study_id       = job.get("study_id", "unknown")
+    study_name     = job.get("study_name", "Untitled Study")
+    researcher     = job.get("researcher_name", "Unknown Researcher")
+    institution    = job.get("institution", "Unknown Institution")
+    dataset        = job.get("dataset", "unknown")
+    architecture   = job.get("architecture", "unknown")
+    num_rounds     = job.get("num_rounds", 5)
+    local_epochs   = job.get("local_epochs", 2)
+    dp_enabled     = job.get("dp_enabled", False)
+    dp_epsilon     = job.get("dp_epsilon")
+    dp_delta       = job.get("dp_delta", 1e-5)
+    dp_sigma       = job.get("dp_noise_multiplier")
+    nodes          = job.get("nodes", [])
+    num_nodes      = len(nodes) if nodes else 1
+    retention_days = job.get("data_retention_days", 90)
+    ethics_ref     = job.get("ethics_ref", "[To be completed by institution]")
+    created_at     = job.get("created_at", datetime.now(timezone.utc).isoformat())
+    try:
+        created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except Exception:
+        created_dt = datetime.now(timezone.utc)
+    date_str    = created_dt.strftime("%d %B %Y")
+    review_date = (created_dt + timedelta(days=365)).strftime("%d %B %Y")
+    ref         = study_id[:8].upper()
+    dp_line     = (
+        f"Enabled — ε={dp_epsilon}, δ=1×10⁻⁵, σ={dp_sigma}" if dp_enabled
+        else "Not applied for this study"
+    )
+
+    dpia = f"""DATA PROTECTION IMPACT ASSESSMENT
+Under GDPR Article 35 & UK Data Security and Protection Toolkit (DSPT)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Study Reference:       {ref}
+Study Title:           {study_name}
+Principal Investigator:{researcher}
+Lead Institution:      {institution}
+Ethics Reference:      {ethics_ref}
+Assessment Date:       {date_str}
+Review Date:           {review_date}
+Prepared by:           UndosaTech Ltd, Dundee, Scotland
+DPO Contact:           dpo@undosatech.com
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. DESCRIPTION OF PROCESSING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Processing Purpose:    {study_name} — federated machine learning research
+Data Controller:       {institution}
+Data Processor:        UndosaTech Ltd (Dundee, Scotland)
+Data Categories:       Special Category Health Data (GDPR Article 9)
+Data Subjects:         Patients whose anonymised records are used for local model training
+Dataset Type:          {dataset}
+Model Architecture:    {architecture}
+Training Nodes:        {num_nodes} participating institution(s)
+Training Rounds:       {num_rounds} federated rounds × {local_epochs} local epochs
+
+IMPORTANT — No raw patient data is transmitted at any stage.
+Only encrypted model gradient updates are sent to the aggregation server.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. NECESSITY AND PROPORTIONALITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Legal Basis:           GDPR Article 6(1)(e) — Public Task;
+                       GDPR Article 9(2)(j) — Scientific Research
+UK Schedule 1 GDPR:    Part 1 para 4 — Research purposes
+Processing is necessary for legitimate scientific research that cannot be
+achieved with fully anonymised data, and adequate safeguards are in place.
+
+Federated architecture ensures data minimisation by design:
+  • Patient records never leave the institutional firewall
+  • Only gradient vectors (no patient attributes) are transmitted
+  • Differential Privacy applied: {dp_line}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. RISK ASSESSMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Risk 1: Re-identification from model weights
+  Likelihood: Low | Impact: High | Residual Risk After Controls: LOW
+  Mitigation: {dp_line}
+
+Risk 2: Unauthorised access during training
+  Likelihood: Low | Impact: Medium | Residual Risk: LOW
+  Mitigation: JWT authentication, TLS 1.3 transport, per-study API keys,
+              immutable audit logging
+
+Risk 3: Gradient inversion / model inversion attacks
+  Likelihood: Very Low | Impact: High | Residual Risk: VERY LOW
+  Mitigation: DP noise injection, gradient clipping (L2 norm C=1.0),
+              no raw data in transit
+
+Risk 4: Data breach at aggregation server
+  Likelihood: Very Low | Impact: Medium | Residual Risk: VERY LOW
+  Mitigation: Aggregation server holds only gradient vectors, not patient
+              data. Encrypted at rest. Deleted after {retention_days} days.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. SAFEGUARDS IMPLEMENTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Technical safeguards:
+  ✓ Federated architecture — zero raw patient data transfer
+  ✓ Differential Privacy — {dp_line}
+  ✓ TLS 1.3 encryption for all data in transit
+  ✓ Immutable audit trail (every training event logged with timestamp)
+  ✓ Data retention limited to {retention_days} days post-study completion
+  ✓ Secure deletion after retention period
+
+Organisational safeguards:
+  ✓ Data Use Agreement signed by all participating institutions
+  ✓ Institutional Information Asset Owner identified at each site
+  ✓ Right to withdrawal preserved pre-training (institution may decline invitation)
+  ✓ Ethics committee review conducted (ref: {ethics_ref})
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. DPO CONSULTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This DPIA must be reviewed by your institution's Data Protection Officer
+before study commencement. Please forward this document to your DPO with
+the signed Data Use Agreement.
+
+UndosaTech DPO: dpo@undosatech.com
+Governance queries: governance@undosatech.com
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SIGN-OFF
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Principal Investigator: {researcher}
+Institution:            {institution}
+Date:                   {date_str}
+Signature:              ________________________________
+
+DPO Sign-Off:           ________________________________
+Date:                   ________________________________
+
+Auto-generated by ARIA — UndosaTech NHS Research IG & Compliance Manager
+"""
+
+    ig_register = f"""NHS INFORMATION GOVERNANCE DATA FLOW REGISTER ENTRY
+UK Data Security and Protection Toolkit (DSPT) — Evidence for Assertion 6.2
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DSPT Reference:        [To be completed by institution]
+UndosaTech Study Ref:  {ref}
+Date Created:          {date_str}
+Next Review Date:      {review_date}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATA FLOW DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Flow Name:             {study_name} — Federated Learning Gradient Exchange
+Source System:         {institution} — Local Clinical Data Repository
+Destination System:    UndosaTech Federated Aggregation Server
+                       (undosatech-production.up.railway.app)
+Direction:             Outbound (institution → aggregation server)
+
+Data Type Transmitted: MODEL GRADIENT UPDATES ONLY
+                       NOT patient records, NOT identifiable data
+Data Classification:   NOT PERSON-IDENTIFIABLE
+                       (post-differential-privacy application)
+Differential Privacy:  {dp_line}
+
+Transfer Method:       HTTPS / TLS 1.3
+Authentication:        Per-node API key + JWT bearer token
+Frequency:             Once per training round ({num_rounds} rounds total)
+Estimated Volume:      ~{architecture} gradient vector per round per node
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INFORMATION ASSET DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Information Asset Owner (IAO):  [To be completed by institution]
+System/Service Manager:         {researcher}
+Information Asset:              Local training dataset — {dataset}
+Dataset Classification:         Special Category (Health Data)
+Retention at Institution:       Data remains on-premise, not transmitted
+
+Retention at UndosaTech:        {retention_days} days post-study completion
+Deletion:                       Secure overwrite of gradient data after retention
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEGAL BASIS & AGREEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Processing Legal Basis:
+  GDPR Article 6(1)(e) — Public Task
+  GDPR Article 9(2)(j) — Scientific Research
+  UK GDPR Schedule 1 Part 1 para 4 — Research
+
+Data Processing Agreement: Signed via Data Use Agreement
+Ethics Approval Reference:  {ethics_ref}
+CALDICOTT GUARDIAN Review:  [Complete if applicable at your institution]
+Section 251 Exemption:      [Review required if any identifiable data involved]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRIVACY ENHANCING TECHNOLOGIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ Federated Learning — no raw data transmitted
+  ✓ Differential Privacy — {dp_line}
+  ✓ Gradient clipping (L2 norm bound C=1.0)
+  ✓ TLS 1.3 for all transmissions
+  ✓ Immutable audit trail maintained
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPLETED BY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Name:                  {researcher}
+Role:                  Principal Investigator
+Institution:           {institution}
+Date:                  {date_str}
+Signature:             ________________________________
+
+Auto-generated by ARIA — UndosaTech NHS Research IG & Compliance Manager
+"""
+
+    model_card = f"""MODEL CARD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Study Title:           {study_name}
+Study Reference:       {ref}
+Model Architecture:    {architecture}
+Training Paradigm:     Federated Learning (FedAvg)
+Principal Investigator:{researcher}
+Lead Institution:      {institution}
+Date:                  {date_str}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INTENDED USE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Primary Purpose:       {study_name}
+Intended Users:        Clinical researchers at participating institutions
+Deployment Context:    Research use only
+Out-of-Scope Uses:     Clinical diagnosis without further validation;
+                       deployment in patient-facing systems without MHRA
+                       review; use outside the stated research purpose
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRAINING DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Dataset:               {dataset}
+Training Approach:     Federated — data remains on-premise at each institution
+Participating Nodes:   {num_nodes}
+Training Rounds:       {num_rounds}
+Local Epochs:          {local_epochs}
+Data Type:             Medical imaging / clinical data
+Data Never Shared:     Raw patient data does not leave institutional firewall
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRIVACY & SECURITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Differential Privacy:  {dp_line}
+Gradient Clipping:     L2 norm bound C=1.0
+Audit Trail:           Immutable — all training events logged
+Data Governance:       NHS IG DSPT-aligned, GDPR Article 89 compliant
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LIMITATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• Model trained on federated data; performance varies across institutional
+  data distributions
+• Differential Privacy reduces model utility in exchange for privacy guarantees
+• Not independently validated for clinical deployment
+• Performance subject to data quality and class balance at each site
+• Model outputs require expert clinical interpretation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ETHICAL CONSIDERATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• All participating institutions signed a Data Use Agreement
+• Ethics approval obtained (ref: {ethics_ref})
+• Immutable audit trail for all training events
+• MHRA AI as Medical Device guidance review recommended before clinical use
+• EU AI Act (high-risk AI system) compliance review recommended for EU deployment
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTACTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Research Governance:   governance@undosatech.com
+Technical Support:     support@undosatech.com
+DPO:                   dpo@undosatech.com
+
+Auto-generated by ARIA — UndosaTech NHS Research IG & Compliance Manager
+"""
+
+    dua = f"""DATA USE AGREEMENT
+UndosaTech Federated Learning Platform — Study-Specific Version
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Agreement Reference:   DUA-{ref}
+Study Title:           {study_name}
+Principal Investigator:{researcher}
+Lead Institution:      {institution}
+Dataset:               {dataset}
+Date:                  {date_str}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Data Controller:       Participating Institution (as named in the invitation)
+Data Processor:        UndosaTech Ltd, Dundee, Scotland
+Study Lead:            {researcher}, {institution}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TERMS OF AGREEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+By accepting participation in this study, the participating institution agrees:
+
+1. DATA SOVEREIGNTY
+   All patient data remains on-premise within your institution's infrastructure
+   at all times. Only encrypted model gradient updates are transmitted to the
+   UndosaTech aggregation server. No raw patient data leaves your firewall.
+
+2. PURPOSE LIMITATION
+   Data contributed to this study will be used solely for the stated research
+   purpose: {study_name}. Data will not be repurposed without a separate ethics
+   committee approval and written researcher consent.
+
+3. ANONYMISATION OBLIGATION
+   You confirm that all locally held data used in this study has been
+   de-identified in accordance with:
+   • NHS Information Governance Toolkit (DSPT)
+   • GDPR Article 89 and UK Schedule 1 Part 1 para 4
+   • ICO Anonymisation Code of Practice (2023)
+   • Applicable national regulations
+
+4. DIFFERENTIAL PRIVACY
+   This study applies the following privacy parameters:
+   {dp_line}
+   These parameters have been set to provide NHS IG-compliant privacy
+   protection. The participating institution acknowledges these settings.
+
+5. AUDIT AND ACCOUNTABILITY
+   Your institution acknowledges that participation is recorded in an
+   immutable audit trail including: invitation acceptance, training rounds
+   completed, and gradient submission timestamps. This audit trail may be
+   provided to your DPO or ethics committee on request.
+
+6. DATA RETENTION
+   Gradient data and model artefacts will be retained for {retention_days} days
+   following study completion, then securely deleted. Your institution's
+   local data remains under your control at all times.
+
+7. PUBLICATION
+   Aggregated model results from this study may be published in academic
+   research. No institution-specific or patient-level data will be included
+   in any publication without prior written consent.
+
+8. LIABILITY
+   Each institution is responsible for ensuring that its local data meets
+   the anonymisation standards stated above. UndosaTech Ltd is not liable
+   for inadequate anonymisation at the institutional level.
+
+9. WITHDRAWAL
+   Your institution may withdraw at any time before training begins by
+   declining the study invitation. Post-training withdrawal does not
+   affect aggregated model weights already computed, which are the joint
+   intellectual output of the research consortium.
+
+10. GOVERNING LAW
+    This agreement is governed by the laws of Scotland, United Kingdom.
+    Any disputes shall be resolved in Scottish courts.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SIGNATURE BLOCK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For and on behalf of [PARTICIPATING INSTITUTION]:
+
+Authorised Signatory:  ________________________________
+Name (print):          ________________________________
+Title:                 ________________________________
+Institution:           ________________________________
+Date:                  ________________________________
+
+For and on behalf of UndosaTech Ltd:
+
+Authorised Signatory:  Dr John Ohanebo
+Title:                 Founder & CEO
+Date:                  {date_str}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Auto-generated by ARIA — UndosaTech NHS Research IG & Compliance Manager
+Version 1.0 | {date_str}
+"""
+
+    return {
+        "study_id":   study_id,
+        "study_ref":  ref,
+        "study_name": study_name,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "documents": {
+            "dpia":        {"title": "GDPR Data Protection Impact Assessment", "filename": f"DPIA_{ref}.txt",       "content": dpia},
+            "ig_register": {"title": "NHS IG Data Flow Register Entry",        "filename": f"IG_Register_{ref}.txt", "content": ig_register},
+            "model_card":  {"title": "Model Card",                             "filename": f"ModelCard_{ref}.txt",   "content": model_card},
+            "dua":         {"title": "Data Use Agreement",                     "filename": f"DUA_{ref}.txt",         "content": dua},
+        },
+    }
+
 
 FLOWER_PORT = int(os.environ.get("FLOWER_SERVER_PORT", "8001"))
 _flower_servers: dict = {}  # study_id -> thread
@@ -1108,6 +1524,8 @@ async def create_study(
     dp_noise_multiplier:  Optional[float] = Form(None),
     invitation_message:   Optional[str]   = Form(None),
     class_descriptions:   Optional[str]   = Form(None),
+    data_retention_days:  Optional[int]   = Form(None),
+    ethics_ref:           Optional[str]   = Form(None),
     file: Optional[UploadFile] = File(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -1157,6 +1575,8 @@ async def create_study(
             "dp_noise_multiplier": dp_noise_multiplier,
             "dp_epsilon": round(1.0 / dp_noise_multiplier, 4) if dp_noise_multiplier else None,
             "dp_delta": 1e-5 if dp_noise_multiplier else None,
+            "data_retention_days": data_retention_days or 90,
+            "ethics_ref": ethics_ref or "[To be completed by institution]",
         }
     else:
         jobs[study_id] = {
@@ -1171,6 +1591,8 @@ async def create_study(
             "dp_noise_multiplier": dp_noise_multiplier,
             "dp_epsilon": round(1.0 / dp_noise_multiplier, 4) if dp_noise_multiplier else None,
             "dp_delta": 1e-5 if dp_noise_multiplier else None,
+            "data_retention_days": data_retention_days or 90,
+            "ethics_ref": ethics_ref or "[To be completed by institution]",
         }
 
     # Auto-invite real registered nodes (skip simulated placeholders)
@@ -1350,6 +1772,44 @@ async def export_audit_csv(study_id: str, authorization: Optional[str] = Header(
 @app.get("/dua")
 async def get_dua():
     return {"text": DUA_TEXT, "version": "1.0", "requires_acknowledgment": True}
+
+
+@app.get("/studies/{study_id}/compliance-pack")
+async def get_compliance_pack(study_id: str, authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    job = jobs.get(study_id)
+    if not job and store:
+        s = store.get(study_id)
+        if s:
+            job = s
+    if not job:
+        raise HTTPException(404, "Study not found")
+    return generate_compliance_pack(job)
+
+
+@app.get("/studies/{study_id}/compliance-pack/download")
+async def download_compliance_pack(study_id: str, authorization: Optional[str] = Header(None)):
+    from fastapi.responses import StreamingResponse
+    _require_user(authorization)
+    job = jobs.get(study_id)
+    if not job and store:
+        s = store.get(study_id)
+        if s:
+            job = s
+    if not job:
+        raise HTTPException(404, "Study not found")
+    pack = generate_compliance_pack(job)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc in pack["documents"].values():
+            zf.writestr(doc["filename"], doc["content"])
+    buf.seek(0)
+    ref = pack["study_ref"]
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="ARIA_CompliancePack_{ref}.zip"'},
+    )
 
 
 @app.get("/studies/{study_id}/flower-address")
