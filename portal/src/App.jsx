@@ -6,6 +6,7 @@ import MyStudies from './components/MyStudies'
 import AdminDashboard from './components/AdminDashboard'
 import StudyInvitations from './components/StudyInvitations'
 import StudyReport from './components/StudyReport'
+import CompliancePack from './components/CompliancePack'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -848,7 +849,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
           {job.num_classes&&<Stat label="Classes" value={job.num_classes}/>}
         </div>
         <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
-          {['live','chart','per-class','nodes','report','audit','invitations'].map(t=><button key={t} style={tabBtn(t)} onClick={()=>setTab(t)}>{t}</button>)}
+          {['live','chart','per-class','nodes','report','audit','invitations','compliance'].map(t=><button key={t} style={tabBtn(t)} onClick={()=>setTab(t)}>{t==='compliance'?'🛡 ARIA':t}</button>)}
         </div>
         {tab==='live'&&<div style={S.card}>
           <div style={{fontSize:12,fontWeight:600,marginBottom:10,display:'flex',justifyContent:'space-between'}}><span>Live training log</span><span style={{fontWeight:400,color:'#9ca3af'}}>{log.length} events · polling every 2s</span></div>
@@ -932,6 +933,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
           </div>
         </div>}
         {tab==='invitations'&&<StudyInvitations studyId={studyId} session={session} isAdmin={isAdmin}/>}
+        {tab==='compliance'&&<div style={{background:'#fff',borderRadius:14,border:'1px solid rgba(0,0,0,0.07)',padding:'20px 24px',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}><CompliancePack studyId={studyId} session={session}/></div>}
       </>:<div style={{color:'#9ca3af',padding:40,textAlign:'center'}}>Loading study…</div>}
     </div>
   )
@@ -952,6 +954,76 @@ function StudiesList({ studies, onSelect }) {
       <Badge status={s.status}/><span style={{color:'#d1d5db'}}>›</span>
     </div>)}
   </div>
+}
+
+// ── ARIA DASHBOARD ────────────────────────────────────────────────────────────
+
+function ARIADashboard({ studies, session, onOpenStudy }) {
+  const statusColor = s => s==='completed'?'#10B981':s==='running'?'#007AFF':s==='failed'?'#EF4444':'#9CA3AF'
+  const statusLabel = s => s==='completed'?'Completed':s==='running'?'Running':s==='failed'?'Failed':'Pending'
+  return (
+    <div style={{fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif'}}>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:6}}>
+        <div style={{background:'linear-gradient(135deg,#007AFF,#5856D6)',borderRadius:10,padding:'6px 14px',color:'#fff',fontWeight:700,fontSize:13,letterSpacing:'0.04em'}}>ARIA</div>
+        <div>
+          <div style={{fontSize:20,fontWeight:700,color:'#1D1D1F',letterSpacing:'-0.02em'}}>NHS Research IG & Compliance Manager</div>
+          <div style={{fontSize:13,color:'#6E6E73',marginTop:2}}>Auto-generated compliance packs for every study — GDPR DPIA · NHS IG Register · Model Card · DUA</div>
+        </div>
+      </div>
+      <div style={{display:'flex',gap:14,margin:'20px 0',flexWrap:'wrap'}}>
+        {[
+          {label:'Studies with Compliance Packs',value:studies.length,color:'#007AFF'},
+          {label:'Documents Generated',value:studies.length*4,color:'#5856D6'},
+          {label:'Completed Studies',value:studies.filter(s=>s.status==='completed').length,color:'#10B981'},
+        ].map(c=>(
+          <div key={c.label} style={{flex:'1 1 160px',background:'#fff',border:'1px solid rgba(0,0,0,0.07)',borderRadius:12,padding:'14px 18px',boxShadow:'0 2px 6px rgba(0,0,0,0.04)'}}>
+            <div style={{fontSize:28,fontWeight:700,color:c.color}}>{c.value}</div>
+            <div style={{fontSize:12,color:'#6E6E73',marginTop:3}}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+      {studies.length===0
+        ? <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.07)',borderRadius:14,padding:'48px 24px',textAlign:'center',color:'#8E8E93'}}>
+            <div style={{fontSize:36,marginBottom:10}}>🛡️</div>
+            <div style={{fontWeight:600,color:'#1D1D1F',marginBottom:6}}>No studies yet</div>
+            <div style={{fontSize:13}}>Compliance packs are auto-generated when you launch a study.</div>
+          </div>
+        : <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.07)',borderRadius:14,overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
+            {studies.map((s,i)=>{
+              const id=s.study_id||s.id
+              return (
+                <div key={id} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 20px',borderBottom:i<studies.length-1?'1px solid rgba(0,0,0,0.05)':'none',cursor:'pointer',transition:'background 0.12s'}}
+                  onMouseEnter={e=>e.currentTarget.style.background='#F9FAFB'}
+                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+                  onClick={()=>onOpenStudy(id)}
+                >
+                  <div style={{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,#EBF5FF,#D1E8FF)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>🛡️</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:14,color:'#1D1D1F',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name||s.study_name||'Unnamed Study'}</div>
+                    <div style={{fontSize:12,color:'#6E6E73',marginTop:2}}>
+                      {s.model||s.architecture} · {s.dataset} · {id.slice(0,8).toUpperCase()}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexShrink:0}}>
+                    {['DPIA','IG Register','Model Card','DUA'].map(d=>(
+                      <span key={d} style={{background:'#F0FDF4',color:'#10B981',border:'1px solid #BBF7D0',padding:'2px 8px',borderRadius:99,fontSize:10,fontWeight:600}}>✓ {d}</span>
+                    ))}
+                  </div>
+                  <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:6}}>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:statusColor(s.status),display:'inline-block'}}/>
+                    <span style={{fontSize:12,color:statusColor(s.status),fontWeight:500}}>{statusLabel(s.status)}</span>
+                  </div>
+                  <span style={{color:'#007AFF',fontSize:12,fontWeight:500,flexShrink:0}}>Open →</span>
+                </div>
+              )
+            })}
+          </div>
+      }
+      <div style={{marginTop:16,padding:'12px 16px',background:'rgba(0,122,255,0.04)',border:'1px solid rgba(0,122,255,0.12)',borderRadius:10,fontSize:12,color:'#374151',lineHeight:1.6}}>
+        <strong style={{color:'#007AFF'}}>How ARIA works:</strong> When you launch a study, ARIA auto-generates a full compliance pack containing a GDPR DPIA, NHS IG Data Flow Register entry, Model Card, and Data Use Agreement — pre-populated with your study parameters, DP settings, and institution details. Click any study above to view and download its documents.
+      </div>
+    </div>
+  )
 }
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
@@ -1023,6 +1095,7 @@ export default function App() {
       {nav('launch','Launch',0)}
       {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
+      {nav('aria','🛡 ARIA',0)}
       {isAdmin&&nav('admin','Admin',0)}
       <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
         {completed>0&&<span style={{fontSize:12,color:'#32D74B',fontWeight:600,background:'rgba(50,215,75,0.1)',padding:'4px 10px',borderRadius:99}}>{completed} completed</span>}
@@ -1058,6 +1131,7 @@ export default function App() {
         <StudiesList studies={studies} onSelect={id=>{setSelected(id);setStudyInitialTab('live')}}/>
       </>}
       {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
+      {tab==='aria'&&<ARIADashboard studies={studies} session={session} onOpenStudy={id=>{setSelected(id);setTab('studies');setStudyInitialTab('compliance')}}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#F5F5F7;color:#1D1D1F;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale} input,select,button,textarea{font-family:inherit} input:focus,select:focus,textarea:focus{border-color:#007AFF !important;box-shadow:0 0 0 3px rgba(0,122,255,0.12) !important;outline:none} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:99px} a{color:#007AFF}`}</style>
