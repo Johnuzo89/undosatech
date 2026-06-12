@@ -7,6 +7,7 @@ import AdminDashboard from './components/AdminDashboard'
 import StudyInvitations from './components/StudyInvitations'
 import StudyReport from './components/StudyReport'
 import CompliancePack from './components/CompliancePack'
+import DataConnectors from './components/DataConnectors'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -1095,6 +1096,7 @@ export default function App() {
       {nav('launch','Launch',0)}
       {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
+      {nav('connectors','Connectors',0)}
       {nav('aria','🛡 ARIA',0)}
       {isAdmin&&nav('admin','Admin',0)}
       <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
@@ -1131,6 +1133,7 @@ export default function App() {
         <StudiesList studies={studies} onSelect={id=>{setSelected(id);setStudyInitialTab('live')}}/>
       </>}
       {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
+      {tab==='connectors'&&<DataConnectors session={session}/>}
       {tab==='aria'&&<ARIADashboard studies={studies} session={session} onOpenStudy={id=>{setSelected(id);setTab('studies');setStudyInitialTab('compliance')}}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
     </div>

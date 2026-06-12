@@ -2703,3 +2703,266 @@ def delete_study(study_id: str, authorization: Optional[str] = Header(None)):
         del jobs[study_id]
     audit(study_id, "study_deleted", {"deleted_by": str(user.id)})
     return {"status": "deleted", "study_id": study_id}
+
+
+# ════════════════════════════════════════════════════════════════
+# CODA — REDCap & OMOP INTEGRATION ENDPOINTS
+# ════════════════════════════════════════════════════════════════
+
+# In-memory connection store (falls back to Supabase when available)
+_connections: dict = {}
+
+
+def _save_connection(user_id: str, conn: dict) -> dict:
+    conn_id = str(uuid.uuid4())
+    conn["id"] = conn_id
+    conn["user_id"] = user_id
+    conn["created_at"] = datetime.now(timezone.utc).isoformat()
+    _connections[conn_id] = conn
+    if supabase_admin:
+        try:
+            supabase_admin.table("data_connections").insert({
+                "id": conn_id, "user_id": user_id,
+                "connection_type": conn["connection_type"],
+                "name": conn["name"],
+                "config": json.dumps(conn.get("config", {})),
+                "status": conn.get("status", "active"),
+                "created_at": conn["created_at"],
+            }).execute()
+        except Exception as e:
+            logger.warning(f"data_connections insert failed (table may not exist yet): {e}")
+    return conn
+
+
+def _list_connections(user_id: str) -> list:
+    if supabase_admin:
+        try:
+            result = supabase_admin.table("data_connections").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+            rows = result.data or []
+            for r in rows:
+                if isinstance(r.get("config"), str):
+                    try: r["config"] = json.loads(r["config"])
+                    except: pass
+            return rows
+        except Exception as e:
+            logger.warning(f"data_connections select failed: {e}")
+    return [c for c in _connections.values() if c.get("user_id") == user_id]
+
+
+def _delete_connection(conn_id: str, user_id: str):
+    _connections.pop(conn_id, None)
+    if supabase_admin:
+        try:
+            supabase_admin.table("data_connections").delete().eq("id", conn_id).eq("user_id", user_id).execute()
+        except Exception as e:
+            logger.warning(f"data_connections delete failed: {e}")
+
+
+@app.get("/integrations/connections")
+async def list_connections(authorization: Optional[str] = Header(None)):
+    user = _require_user(authorization)
+    conns = _list_connections(str(user.id))
+    for c in conns:
+        cfg = c.get("config", {})
+        if isinstance(cfg, dict) and "token" in cfg:
+            cfg = {**cfg, "token": "***"}
+        c["config"] = cfg
+    return conns
+
+
+@app.delete("/integrations/connections/{conn_id}")
+async def delete_connection(conn_id: str, authorization: Optional[str] = Header(None)):
+    user = _require_user(authorization)
+    _delete_connection(conn_id, str(user.id))
+    return {"deleted": True, "id": conn_id}
+
+
+# ── REDCap ────────────────────────────────────────────────────────────────────
+
+@app.post("/integrations/redcap/test")
+async def redcap_test(body: dict = Body(...), authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    url   = body.get("url", "").strip()
+    token = body.get("token", "").strip()
+    if not url or not token:
+        raise HTTPException(400, "url and token are required")
+    try:
+        from orchestrator.redcap_connector import test_connection
+        info = test_connection(url, token)
+        return info
+    except ConnectionError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"REDCap test failed: {e}")
+
+
+@app.post("/integrations/redcap/metadata")
+async def redcap_metadata(body: dict = Body(...), authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    url   = body.get("url", "").strip()
+    token = body.get("token", "").strip()
+    if not url or not token:
+        raise HTTPException(400, "url and token are required")
+    try:
+        from orchestrator.redcap_connector import get_metadata
+        return get_metadata(url, token)
+    except ConnectionError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"REDCap metadata failed: {e}")
+
+
+@app.post("/integrations/redcap/import")
+async def redcap_import(body: dict = Body(...), authorization: Optional[str] = Header(None)):
+    """Export REDCap records to a CSV file, save as a named connection, return a dataset_id."""
+    user = _require_user(authorization)
+    url             = body.get("url", "").strip()
+    token           = body.get("token", "").strip()
+    feature_fields  = body.get("feature_fields", [])
+    label_field     = body.get("label_field", "")
+    label_map       = body.get("label_map")
+    connection_name = body.get("name", "REDCap Import")
+    if not url or not token or not feature_fields or not label_field:
+        raise HTTPException(400, "url, token, feature_fields, and label_field are required")
+    try:
+        from orchestrator.redcap_connector import export_to_csv
+        dataset_id  = str(uuid.uuid4())
+        output_path = UPLOADS_DIR / f"{dataset_id}.csv"
+        result = export_to_csv(url, token, feature_fields, label_field, output_path, label_map)
+        conn = _save_connection(str(user.id), {
+            "connection_type": "redcap",
+            "name": connection_name,
+            "status": "active",
+            "config": {
+                "url": url, "token": "***",
+                "feature_fields": feature_fields,
+                "label_field": label_field,
+                "dataset_id": dataset_id,
+            },
+        })
+        return {**result, "dataset_id": dataset_id, "connection_id": conn["id"],
+                "dataset_name": connection_name, "file": str(output_path)}
+    except (ConnectionError, ValueError) as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"REDCap import failed: {e}")
+
+
+@app.post("/integrations/redcap/save")
+async def redcap_save_connection(body: dict = Body(...), authorization: Optional[str] = Header(None)):
+    """Save a REDCap connection without importing data (credentials + project info only)."""
+    user = _require_user(authorization)
+    url   = body.get("url", "").strip()
+    token = body.get("token", "").strip()
+    name  = body.get("name", "REDCap Connection")
+    if not url or not token:
+        raise HTTPException(400, "url and token are required")
+    try:
+        from orchestrator.redcap_connector import test_connection
+        info = test_connection(url, token)
+    except ConnectionError as e:
+        raise HTTPException(400, str(e))
+    conn = _save_connection(str(user.id), {
+        "connection_type": "redcap",
+        "name": name,
+        "status": "active",
+        "config": {"url": url, "token": token, "project_id": info.get("project_id"), "project_title": info.get("project_title")},
+    })
+    conn["config"] = {**conn.get("config", {}), "token": "***"}
+    return {**conn, "project_info": info}
+
+
+# ── OMOP ──────────────────────────────────────────────────────────────────────
+
+@app.get("/integrations/omop/scenarios")
+async def omop_scenarios(authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    from orchestrator.omop_connector import get_scenarios
+    return get_scenarios()
+
+
+@app.post("/integrations/omop/validate")
+async def omop_validate(
+    files: List[UploadFile] = File(...),
+    authorization: Optional[str] = Header(None),
+):
+    """Accept 1–3 OMOP CSV uploads and detect table types + validate columns."""
+    _require_user(authorization)
+    try:
+        import pandas as pd
+        from orchestrator.omop_connector import detect_omop_table, validate_omop_table
+    except ImportError as e:
+        raise HTTPException(500, f"pandas required: {e}")
+
+    result = {}
+    for f in files:
+        try:
+            df = pd.read_csv(io.BytesIO(await f.read()), nrows=5)
+            table_name = detect_omop_table(df)
+            missing    = validate_omop_table(df, table_name or "") if table_name else []
+            result[f.filename] = {
+                "detected_table": table_name,
+                "columns": list(df.columns),
+                "rows_preview": len(df),
+                "missing_required": missing,
+                "valid": table_name is not None and len(missing) == 0,
+            }
+        except Exception as e:
+            result[f.filename] = {"error": str(e), "valid": False}
+    return result
+
+
+@app.post("/integrations/omop/import")
+async def omop_import(
+    scenario: str = Form("diabetes_classification"),
+    name: str = Form("OMOP Import"),
+    label_concept_ids: Optional[str] = Form(None),
+    feature_concept_ids: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    authorization: Optional[str] = Header(None),
+):
+    """Transform OMOP CSV uploads into a training-ready CSV dataset."""
+    user = _require_user(authorization)
+    try:
+        import pandas as pd
+        from orchestrator.omop_connector import detect_omop_table, export_to_csv
+    except ImportError as e:
+        raise HTTPException(500, f"pandas required: {e}")
+
+    tables: dict = {}
+    for f in files:
+        try:
+            df = pd.read_csv(io.BytesIO(await f.read()))
+            df.columns = [c.lower() for c in df.columns]
+            tname = detect_omop_table(df)
+            if tname:
+                tables[tname] = df
+        except Exception as e:
+            raise HTTPException(400, f"Could not read {f.filename}: {e}")
+
+    if "person" not in tables:
+        raise HTTPException(400, "A 'person' table CSV is required (must contain person_id, gender_concept_id, year_of_birth)")
+
+    try:
+        custom_labels   = [int(x) for x in label_concept_ids.split(",")] if label_concept_ids else None
+        custom_features = [int(x) for x in feature_concept_ids.split(",")] if feature_concept_ids else None
+        dataset_id  = str(uuid.uuid4())
+        output_path = UPLOADS_DIR / f"{dataset_id}.csv"
+        result = export_to_csv(tables, scenario, output_path, custom_labels, custom_features)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"OMOP transform failed: {e}")
+
+    conn = _save_connection(str(user.id), {
+        "connection_type": "omop",
+        "name": name,
+        "status": "active",
+        "config": {
+            "scenario": scenario,
+            "tables_uploaded": list(tables.keys()),
+            "dataset_id": dataset_id,
+        },
+    })
+    return {**result, "dataset_id": dataset_id, "connection_id": conn["id"],
+            "dataset_name": name, "file": str(output_path)}
