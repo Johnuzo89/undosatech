@@ -872,7 +872,7 @@ def _require_admin(authorization: Optional[str]):
 
 
 # ── Universal data loader ─────────────────────────────────────────────────────
-def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id: int, num_partitions: int):
+def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id: int, num_partitions: int, img_size: int = 28):
     import torch
     from torch.utils.data import DataLoader, TensorDataset, Subset, random_split
     import numpy as np
@@ -896,7 +896,7 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
             import medmnist
             from torchvision import transforms
             DataClass = getattr(medmnist, cls_name)
-            tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5]*in_ch, [0.5]*in_ch)])
+            tf = transforms.Compose([transforms.Resize((img_size, img_size)), transforms.ToTensor(), transforms.Normalize([0.5]*in_ch, [0.5]*in_ch)])
             train_ds = DataClass(split="train", transform=tf, download=True, root=str(UPLOADS_DIR))
             test_ds  = DataClass(split="test",  transform=tf, download=True, root=str(UPLOADS_DIR))
             n = min(len(train_ds) // num_partitions, MAX_SAMPLES_PER_PARTITION)
@@ -974,7 +974,7 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
                                 elif arr.ndim == 3:
                                     arr = arr.transpose(2, 0, 1)
                                 t = torch.FloatTensor(arr).unsqueeze(0)
-                                t = F.interpolate(t, size=(28,28), mode='bilinear', align_corners=False).squeeze(0)
+                                t = F.interpolate(t, size=(img_size, img_size), mode='bilinear', align_corners=False).squeeze(0)
                                 X_list.append(t); y_list.append(cls_idx)
                             except Exception as de:
                                 logger.warning(f"DICOM file {dp.name} skipped: {de}")
@@ -987,7 +987,7 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
                     return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
                             DataLoader(test_ds,32,shuffle=False,num_workers=0),
                             n_cls, in_ch, f"DICOM ZIP: {len(X)} scans · {n_cls} classes", class_names)
-                tf = transforms.Compose([transforms.Resize((28,28)), transforms.Grayscale(1),
+                tf = transforms.Compose([transforms.Resize((img_size, img_size)), transforms.Grayscale(1),
                                          transforms.ToTensor(), transforms.Normalize([0.5],[0.5])])
                 ds = datasets.ImageFolder(str(extract_dir), transform=tf)
                 n_cls=len(ds.classes); in_ch=1; class_names=ds.classes
@@ -1008,7 +1008,7 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
                     arr_t = torch.FloatTensor(arr).unsqueeze(0)
                 else:
                     arr_t = torch.FloatTensor(arr.transpose(2,0,1))
-                img = F.interpolate(arr_t.unsqueeze(0), size=(28,28), mode='bilinear', align_corners=False).squeeze(0)
+                img = F.interpolate(arr_t.unsqueeze(0), size=(img_size, img_size), mode='bilinear', align_corners=False).squeeze(0)
                 in_ch = img.shape[0]
                 # Derive label from DICOM tags; default 0 if no diagnosis keywords found
                 study_desc  = str(getattr(ds_dcm, 'StudyDescription',  '') or '')
@@ -1028,7 +1028,7 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
     # Synthetic fallback
     import torch
     torch.manual_seed(42)
-    X=torch.randn(2000,1,28,28); y=torch.randint(0,4,(2000,))
+    X=torch.randn(2000,1,img_size,img_size); y=torch.randint(0,4,(2000,))
     ds=TensorDataset(X,y); train_ds,test_ds=random_split(ds,[1600,400])
     return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
             DataLoader(test_ds,32,shuffle=False,num_workers=0),
@@ -1305,10 +1305,15 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
         num_nodes = len(node_names)
         device = torch.device("cpu")
 
+        _LARGE_INPUT_ARCHS = {"densenet121", "convnext_tiny", "swin_t", "efficientnet_v2_s"}
+        img_size = 64 if arch in _LARGE_INPUT_ARCHS else 28
+        if arch in _LARGE_INPUT_ARCHS:
+            log(f"🖼️  Resizing inputs to {img_size}×{img_size} for {arch} (requires deeper spatial resolution)")
+
         node_loaders = []
         for i in range(num_nodes):
             tl, vl, num_classes, in_ch, desc, class_names = detect_and_load(
-                upload_path, dataset_name, i, num_nodes)
+                upload_path, dataset_name, i, num_nodes, img_size=img_size)
             node_loaders.append((tl, vl))
             if i == 0:
                 log(f"Dataset: {desc}")
@@ -2069,7 +2074,8 @@ def download_model(study_id: str, format: str = Query("pt"), authorization: Opti
         model.load_state_dict(state_dict, strict=False)
         model.eval()
 
-        dummy = torch.zeros(1, in_ch, 28, 28)
+        _onnx_size = 64 if arch in {"densenet121", "convnext_tiny", "swin_t", "efficientnet_v2_s"} else 28
+        dummy = torch.zeros(1, in_ch, _onnx_size, _onnx_size)
         onnx_buf = _io2.BytesIO()
         torch.onnx.export(model, dummy, onnx_buf, opset_version=17,
                           input_names=["input"], output_names=["logits"],
