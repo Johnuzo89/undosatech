@@ -1871,29 +1871,29 @@ def get_study(study_id: str, authorization: Optional[str] = Header(None)):
     if store:
         try:
             study = store.get(study_id)
-            if not study: raise HTTPException(404, "Not found")
-            rounds = store.get_rounds(study_id)
-            # Build interpretability from stored data if not in memory
-            interp = jobs.get(study_id, {}).get("interpretability")
-            if not interp and study.get("per_class_accuracy"):
-                import json as _json
-                pca = study.get("per_class_accuracy", {})
-                class_labels = list(pca.keys()) if isinstance(pca, dict) else []
-                interp = {
-                    "method": f"Grad-CAM + Integrated Gradients ({study.get('model','unknown')} final layer)",
-                    "class_labels": class_labels,
-                    "top_features": [
-                        {"feature":"Primary activation region","importance":0.38,"direction":"positive"},
-                        {"feature":"Secondary texture pattern","importance":0.29,"direction":"positive"},
-                        {"feature":"Background suppression","importance":0.19,"direction":"negative"},
-                        {"feature":"Edge and boundary response","importance":0.14,"direction":"positive"},
-                    ],
-                    "summary": f"Federated {study.get('model','unknown')} global model after FedAvg across {len(study.get('nodes',[]))} nodes.",
-                }
-            return {**(jobs.get(study_id, {})), **study, "rounds": rounds, "interpretability": interp}
+            if study:
+                rounds = store.get_rounds(study_id)
+                # Build interpretability from stored data if not in memory
+                interp = jobs.get(study_id, {}).get("interpretability")
+                if not interp and study.get("per_class_accuracy"):
+                    pca = study.get("per_class_accuracy", {})
+                    class_labels = list(pca.keys()) if isinstance(pca, dict) else []
+                    interp = {
+                        "method": f"Grad-CAM + Integrated Gradients ({study.get('model','unknown')} final layer)",
+                        "class_labels": class_labels,
+                        "top_features": [
+                            {"feature":"Primary activation region","importance":0.38,"direction":"positive"},
+                            {"feature":"Secondary texture pattern","importance":0.29,"direction":"positive"},
+                            {"feature":"Background suppression","importance":0.19,"direction":"negative"},
+                            {"feature":"Edge and boundary response","importance":0.14,"direction":"positive"},
+                        ],
+                        "summary": f"Federated {study.get('model','unknown')} global model after FedAvg across {len(study.get('nodes',[]))} nodes.",
+                    }
+                return {**(jobs.get(study_id, {})), **study, "study_id": study_id, "rounds": rounds, "interpretability": interp}
         except HTTPException: raise
         except Exception as e:
-            logger.warning(f"Supabase get failed: {e}")
+            logger.warning(f"Supabase get failed for {study_id[:8]}: {e}")
+    # Fallback to in-memory jobs dict (covers: Supabase unavailable, study not yet persisted)
     if study_id not in jobs: raise HTTPException(404, "Not found")
     return jobs[study_id]
 

@@ -93,11 +93,12 @@ class StudyStore:
                 self._db.table("studies")
                 .select("*")
                 .eq("id", study_id)
-                .single()
+                .maybe_single()
                 .execute()
             )
             return result.data
-        except Exception:
+        except Exception as e:
+            log.warning(f"store.get({study_id[:8]}…) failed: {e}")
             return None
 
     def get_or_raise(self, study_id: str) -> dict:
@@ -119,7 +120,11 @@ class StudyStore:
             .order("created_at", desc=True)
             .execute()
         )
-        return result.data or []
+        rows = result.data or []
+        # Ensure study_id is always present so the frontend can navigate to the detail page
+        for r in rows:
+            r.setdefault("study_id", r.get("id"))
+        return rows
 
     def list_all(self) -> list[dict]:
         """All studies across all users, newest first. Admin use only."""

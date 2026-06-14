@@ -916,9 +916,11 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
   const addLog=useCallback((msg,type='info')=>setLog(l=>[...l,{ts:new Date().toLocaleTimeString(),msg,type}].slice(-500)),[])
   useEffect(()=>{
     let prev={status:null,round:0,liveStatus:null}
+    let consecutiveErrors=0
     const poll=async()=>{
       try{
         const {data:{session:freshSession}}=await supabase.auth.getSession();const token=freshSession?.access_token||null;const data=await apiFetch(`/studies/${studyId}`,{},token)
+        consecutiveErrors=0
         setJob(data)
         if(prev.status===null){addLog(`✅ Connected — ${data.study_name||data.name}`,'success');addLog(`   Dataset: ${data.dataset}  ·  Architecture: ${data.architecture||data.model}  ·  ${data.num_rounds||data.total_rounds} rounds`);if(data.data_description)addLog(`   Data: ${data.data_description}`)}
         if(data.live_status&&data.status==='running'&&data.live_status!==prev.liveStatus){addLog(`   ⏳ ${data.live_status}`,'info');prev.liveStatus=data.live_status}
@@ -937,7 +939,14 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
         if((data.status==='cancelled'||data.status==='stopped')&&prev.status!==data.status)addLog(`🛑 Training stopped by user`,'error')
         if(data.status==='failed'&&prev.status!=='failed')addLog(`❌ Failed: ${data.error||data.error_message}`,'error')
         prev.status=data.status
-      }catch(e){if(!e.message.includes('Token validation'))addLog(`⚠ Poll error: ${e.message}`,'error')}
+      }catch(e){
+        consecutiveErrors++
+        if(!e.message.includes('Token validation')){
+          // Only log the first error and every 10th after — avoids flooding the log during server restarts
+          if(consecutiveErrors===1)addLog(`⚠ Server unreachable — retrying…`,'error')
+          else if(consecutiveErrors%10===0)addLog(`⚠ Still retrying (${consecutiveErrors} attempts)…`,'error')
+        }
+      }
     }
     if(!session?.access_token){setTimeout(poll,1000);return}
     poll()
