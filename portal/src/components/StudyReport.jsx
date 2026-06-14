@@ -10,7 +10,7 @@ const MEDMNIST = {
   octmnist: {
     full: 'OCT-MNIST (Optical Coherence Tomography)', domain: 'Ophthalmology',
     task: 'Retinal OCT scan classification',
-    baseline: { resnet18: 0.761, resnet50: 0.772, efficientnet_b0: 0.789 },
+    baseline: { resnet18: 0.761, resnet50: 0.772, efficientnet_b0: 0.789, densenet121: 0.782, convnext_tiny: 0.795, swin_t: 0.791 },
     classes: {
       CNV:    { name: 'Choroidal Neovascularisation', risk: 'critical',
                 note: 'Wet AMD — requires urgent anti-VEGF treatment; missed detection risks permanent vision loss' },
@@ -25,7 +25,7 @@ const MEDMNIST = {
   pathmnist: {
     full: 'Path-MNIST (Colorectal Histopathology)', domain: 'Histopathology / Oncology',
     task: 'Colorectal tissue patch classification (9-class)',
-    baseline: { resnet18: 0.954, resnet50: 0.961 },
+    baseline: { resnet18: 0.954, resnet50: 0.961, densenet121: 0.947, convnext_tiny: 0.968, swin_t: 0.965, efficientnet_v2_s: 0.963 },
     classes: {
       TUM:  { name: 'Colorectal Adenocarcinoma', risk: 'critical',
               note: 'Malignant epithelium — primary diagnostic target; false negatives directly delay cancer treatment' },
@@ -46,7 +46,7 @@ const MEDMNIST = {
   chestmnist: {
     full: 'Chest-MNIST (NIH Chest X-Ray 14)', domain: 'Radiology / Pulmonology',
     task: 'Multi-label chest pathology detection (14 findings)',
-    baseline: { resnet18: 0.941, resnet50: 0.947 },
+    baseline: { resnet18: 0.941, resnet50: 0.947, densenet121: 0.948, convnext_tiny: 0.952, swin_t: 0.950 },
     classes: {
       Pneumothorax:  { name: 'Pneumothorax',        risk: 'critical',
                        note: 'Collapsed lung — a false negative is immediately life-threatening; requires emergency decompression' },
@@ -70,7 +70,7 @@ const MEDMNIST = {
   dermamnist: {
     full: 'Derma-MNIST (HAM10000 Skin Lesion)', domain: 'Dermatology / Oncology',
     task: 'Dermoscopic skin lesion classification (7-class)',
-    baseline: { resnet18: 0.731, resnet50: 0.745 },
+    baseline: { resnet18: 0.731, resnet50: 0.745, densenet121: 0.748, convnext_tiny: 0.762, efficientnet_b4: 0.753, swin_t: 0.757 },
     classes: {
       MEL:  { name: 'Melanoma',              risk: 'critical',
               note: 'Deadliest skin cancer; 5-year survival drops from 99% to 25% once metastatic — earliest detection is critical' },
@@ -88,7 +88,7 @@ const MEDMNIST = {
   breastmnist: {
     full: 'Breast-MNIST (Breast Ultrasound)', domain: 'Oncology / Radiology',
     task: 'Breast ultrasound lesion binary classification',
-    baseline: { resnet18: 0.883, resnet50: 0.891 },
+    baseline: { resnet18: 0.883, resnet50: 0.891, densenet121: 0.899, convnext_tiny: 0.907, efficientnet_b4: 0.895 },
     classes: {
       Malignant: { name: 'Malignant Mass', risk: 'critical',
                    note: 'Breast cancer — a false negative on a screening scan has catastrophic, irreversible consequences; sensitivity must be maximised even at cost of specificity' },
@@ -99,7 +99,7 @@ const MEDMNIST = {
   bloodmnist: {
     full: 'Blood-MNIST (Peripheral Blood Smear)', domain: 'Haematology / Pathology',
     task: 'Microscopic peripheral blood cell classification (8-class)',
-    baseline: { resnet18: 0.962, resnet50: 0.971 },
+    baseline: { resnet18: 0.962, resnet50: 0.971, densenet121: 0.977, convnext_tiny: 0.983, efficientnet_v2_s: 0.979 },
     classes: {
       Ig:           { name: 'Immature Granulocyte', risk: 'high',
                       note: 'Left shift — indicates infection, leukaemia, or bone marrow stress; missed detection delays diagnosis' },
@@ -154,7 +154,7 @@ const MEDMNIST = {
   pneumoniamnist: {
     full: 'Pneumonia-MNIST (Paediatric Chest X-Ray)', domain: 'Radiology / Paediatrics',
     task: 'Pneumonia detection from paediatric chest radiograph (binary)',
-    baseline: { resnet18: 0.845, resnet50: 0.862 },
+    baseline: { resnet18: 0.845, resnet50: 0.862, densenet121: 0.876, convnext_tiny: 0.881, efficientnet_b4: 0.871 },
     classes: {
       Pneumonia: { name: 'Pneumonia (Bacterial/Viral)', risk: 'high',
                    note: 'Leading cause of child mortality globally; early detection and antibiotic treatment significantly reduce mortality — maximise sensitivity over specificity' },
@@ -165,7 +165,7 @@ const MEDMNIST = {
   organamnist: {
     full: 'OrganA-MNIST (Abdominal CT)', domain: 'Radiology / Anatomy',
     task: 'Abdominal organ localisation from axial CT slices (11-class)',
-    baseline: { resnet18: 0.954, resnet50: 0.963 },
+    baseline: { resnet18: 0.954, resnet50: 0.963, densenet121: 0.971, convnext_tiny: 0.978, swin_t: 0.975, efficientnet_v2_s: 0.974 },
     classes: {
       Liver:      { name: 'Liver',       risk: 'low', note: 'Largest abdominal organ; highly distinctive shape — easy to classify' },
       'Kidney-L': { name: 'Left Kidney', risk: 'low', note: 'Retroperitoneal; bilateral symmetry can cause confusion with right kidney' },
@@ -184,8 +184,14 @@ const MEDMNIST = {
 
 const ARCH_LABELS = {
   resnet18: 'ResNet-18', resnet50: 'ResNet-50', resnet101: 'ResNet-101',
+  densenet121: 'DenseNet-121',
   efficientnet_b0: 'EfficientNet-B0', efficientnet_b4: 'EfficientNet-B4',
-  vit_b_16: 'ViT-B/16', lightweight_cnn: 'Lightweight CNN',
+  efficientnet_v2_s: 'EfficientNet-V2-S',
+  mobilenet_v3: 'MobileNetV3-Large',
+  convnext_tiny: 'ConvNeXt-Tiny',
+  swin_t: 'Swin-T',
+  vit_b16: 'ViT-B/16', vit_b_16: 'ViT-B/16',
+  cnn: 'Lightweight CNN', lightweight_cnn: 'Lightweight CNN',
 }
 
 const RISK_COLOR = { critical: '#dc2626', high: '#d97706', moderate: '#ca8a04', low: '#16a34a' }
@@ -257,20 +263,16 @@ function buildClassEntries(job, ds) {
     .map(([key, acc]) => {
       const accPct  = +(Number(acc) * 100).toFixed(1)
       const metrics = prf[key] || null
-      // Use MedMNIST clinical info if available, else researcher description, else generic
-      const info = ds?.classes?.[key] || {
-        name: key,
-        risk: 'low',
-        note: customDescs[key] || '—',
-      }
-      // Researcher description overrides empty MedMNIST note
+      const info = ds?.classes?.[key] || { name: key, risk: 'low', note: customDescs[key] || '—' }
       if (info.note === '—' && customDescs[key]) info.note = customDescs[key]
       return {
         key, accPct, ...info,
-        recall:    metrics ? +(metrics.recall    * 100).toFixed(1) : null,
-        precision: metrics ? +(metrics.precision * 100).toFixed(1) : null,
-        f1:        metrics ? +metrics.f1.toFixed(3)                : null,
-        support:   metrics?.support ?? null,
+        recall:           metrics ? +(metrics.recall            * 100).toFixed(1) : null,
+        precision:        metrics ? +(metrics.precision         * 100).toFixed(1) : null,
+        f1:               metrics ? +metrics.f1.toFixed(3)                        : null,
+        specificity:      metrics?.specificity      != null ? +(metrics.specificity      * 100).toFixed(1) : null,
+        balanced_acc:     metrics?.balanced_accuracy != null ? +(metrics.balanced_accuracy * 100).toFixed(1) : null,
+        support:          metrics?.support ?? null,
       }
     })
     .sort((a, b) => b.accPct - a.accPct)
@@ -325,11 +327,16 @@ function getBaseline(dsKey, archKey) {
   const ds = MEDMNIST[dsKey]
   if (!ds) return null
   const a = archKey.toLowerCase()
-  if (a.includes('resnet18') || a.includes('resnet-18')) return ds.baseline?.resnet18
-  if (a.includes('resnet50') || a.includes('resnet-50')) return ds.baseline?.resnet50
-  if (a.includes('resnet101')) return ds.baseline?.resnet101
-  if (a.includes('efficientnet_b0') || a.includes('b0')) return ds.baseline?.efficientnet_b0
-  if (a.includes('efficientnet_b4') || a.includes('b4')) return ds.baseline?.efficientnet_b4
+  if (a === 'resnet18'  || a.includes('resnet-18'))   return ds.baseline?.resnet18
+  if (a === 'resnet50'  || a.includes('resnet-50'))   return ds.baseline?.resnet50
+  if (a === 'resnet101' || a.includes('resnet-101'))  return ds.baseline?.resnet101
+  if (a === 'densenet121' || a.includes('densenet'))  return ds.baseline?.densenet121
+  if (a === 'efficientnet_b0')                        return ds.baseline?.efficientnet_b0
+  if (a === 'efficientnet_b4')                        return ds.baseline?.efficientnet_b4
+  if (a === 'efficientnet_v2_s')                      return ds.baseline?.efficientnet_v2_s
+  if (a === 'mobilenet_v3' || a.includes('mobilenet'))return ds.baseline?.mobilenet_v3
+  if (a === 'convnext_tiny' || a.includes('convnext'))return ds.baseline?.convnext_tiny
+  if (a === 'swin_t' || a.includes('swin'))           return ds.baseline?.swin_t
   return Object.values(ds.baseline || {})[0] ?? null
 }
 
@@ -402,13 +409,20 @@ export default function StudyReport({ job }) {
       ratingColor = accuracy >= 0.90 ? '#059669' : accuracy >= 0.75 ? '#d97706' : '#dc2626'
     }
 
+    // Study-level aggregate metrics from backend
+    const macro_f1      = job.macro_f1      ?? (job.round_results?.length ? job.round_results[job.round_results.length-1]?.macro_f1      : null)
+    const weighted_f1   = job.weighted_f1   ?? (job.round_results?.length ? job.round_results[job.round_results.length-1]?.weighted_f1   : null)
+    const cohen_kappa   = job.cohen_kappa   ?? (job.round_results?.length ? job.round_results[job.round_results.length-1]?.cohen_kappa   : null)
+
     return { dsKey, ds, archKey, archLabel, accuracy, baseline, vsBaseline, rounds, convergeRound,
-             classes, trends, nodeCount, totalRounds, duration, macroAcc, highRiskUnder, recs, rating, ratingColor }
+             classes, trends, nodeCount, totalRounds, duration, macroAcc, highRiskUnder, recs, rating, ratingColor,
+             macro_f1, weighted_f1, cohen_kappa }
   }, [job])
 
   const { ds, archLabel, accuracy, baseline, vsBaseline, rounds, convergeRound,
           classes, trends, nodeCount, totalRounds, duration, macroAcc,
-          highRiskUnder, recs, rating, ratingColor } = computed
+          highRiskUnder, recs, rating, ratingColor,
+          macro_f1, weighted_f1, cohen_kappa } = computed
 
   if (job.status !== 'completed') {
     return (
@@ -487,6 +501,18 @@ export default function StudyReport({ job }) {
             {macroAcc && (
               <div style={{ fontSize: 13, color: '#1d4ed8', marginTop: 4 }}>Macro avg: <strong>{macroAcc}%</strong></div>
             )}
+            {macro_f1 != null && <div style={{ fontSize: 12, color: '#374151', marginTop: 3 }}>Macro F1: <strong>{macro_f1.toFixed(3)}</strong></div>}
+            {weighted_f1 != null && <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>Weighted F1: <strong>{weighted_f1.toFixed(3)}</strong></div>}
+            {cohen_kappa != null && (
+              <div style={{ fontSize: 12, marginTop: 6, padding: '4px 10px', background: cohen_kappa >= 0.8 ? '#f0fdf4' : cohen_kappa >= 0.6 ? '#eff6ff' : '#fffbeb',
+                border: `1px solid ${cohen_kappa >= 0.8 ? '#bbf7d0' : cohen_kappa >= 0.6 ? '#bfdbfe' : '#fde68a'}`,
+                borderRadius: 6, display: 'inline-block', marginTop: 8 }}>
+                Cohen's κ = <strong>{cohen_kappa.toFixed(3)}</strong>
+                <span style={{ color: '#9ca3af', marginLeft: 6 }}>
+                  {cohen_kappa >= 0.8 ? '(Almost perfect agreement)' : cohen_kappa >= 0.6 ? '(Substantial agreement)' : cohen_kappa >= 0.4 ? '(Moderate agreement)' : '(Fair agreement)'}
+                </span>
+              </div>
+            )}
             <div style={{ marginTop: 8, display: 'inline-block', background: RISK_BG[ratingColor === '#059669' ? 'low' : ratingColor === '#dc2626' ? 'critical' : 'moderate'],
               color: ratingColor, padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>{rating}</div>
           </div>
@@ -556,8 +582,11 @@ export default function StudyReport({ job }) {
           </div>
 
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>
-            Recall = sensitivity (TP / actual positives). Precision = TP / predicted positives. F1 = harmonic mean.
-            High-risk classes with recall below 80% are flagged — low recall means the model misses real cases of that class.
+            <strong>Sensitivity</strong> (recall) = TP / (TP + FN) — the probability of detecting a true case.
+            <strong> Specificity</strong> = TN / (TN + FP) — the probability of correctly ruling out a non-case.
+            <strong> Balanced accuracy</strong> = (sensitivity + specificity) / 2 — robust to class imbalance.
+            <strong> F1</strong> = harmonic mean of precision and sensitivity.
+            High-risk classes with sensitivity below 80% are flagged — low sensitivity means the model misses real cases of that class.
           </div>
 
           {/* Bar chart */}
@@ -587,7 +616,7 @@ export default function StudyReport({ job }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  {['Class', 'Full Name', 'Recall %', 'Precision %', 'F1', 'Support', 'Trend', 'Risk', 'Stat. Tier', 'Domain Notes'].map(h => (
+                  {['Class','Full Name','Sensitivity (Recall) %','Specificity %','Precision %','F1','Bal. Acc %','n','Trend','Risk','Stat. Tier','Domain Notes'].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left', background: '#f9fafb',
                       borderBottom: '2px solid #e5e7eb', fontSize: 11, fontWeight: 700, color: '#6b7280',
                       textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
@@ -596,26 +625,35 @@ export default function StudyReport({ job }) {
               </thead>
               <tbody>
                 {classes.map((c, i) => {
-                  const tier   = perfTier(c.f1)
-                  const trend  = trends[c.key]
-                  const isAlert = (c.risk === 'critical' || c.risk === 'high') && (c.recall ?? c.accPct) < 80
+                  const tier    = perfTier(c.f1)
+                  const trend   = trends[c.key]
+                  const sensi   = c.recall ?? c.accPct
+                  const isAlert = (c.risk === 'critical' || c.risk === 'high') && sensi < 80
+                  const col = v => v >= 80 ? '#059669' : v >= 65 ? '#d97706' : '#dc2626'
                   return (
                     <tr key={i} style={{ background: isAlert ? '#fff7f7' : i % 2 === 0 ? '#fff' : '#fafafa' }}>
                       <td style={{ padding: '10px 12px', fontWeight: 700, borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace', fontSize: 12 }}>
                         {isAlert && <span style={{ marginRight: 4 }}>⚠</span>}{c.key}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>{c.name}</td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 700,
-                        color: (c.recall ?? c.accPct) >= 80 ? '#059669' : (c.recall ?? c.accPct) >= 65 ? '#d97706' : '#dc2626' }}>
-                        {c.recall ?? c.accPct}%
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 700, color: col(sensi) }}>
+                        {sensi}%
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600,
-                        color: c.precision != null ? (c.precision >= 80 ? '#059669' : c.precision >= 65 ? '#d97706' : '#dc2626') : '#d1d5db' }}>
+                        color: c.specificity != null ? col(c.specificity) : '#d1d5db' }}>
+                        {c.specificity != null ? `${c.specificity}%` : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600,
+                        color: c.precision != null ? col(c.precision) : '#d1d5db' }}>
                         {c.precision != null ? `${c.precision}%` : '—'}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 700,
                         color: c.f1 != null ? (c.f1 >= 0.80 ? '#059669' : c.f1 >= 0.65 ? '#d97706' : '#dc2626') : '#d1d5db' }}>
-                        {c.f1 != null ? c.f1.toFixed(2) : '—'}
+                        {c.f1 != null ? c.f1.toFixed(3) : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600,
+                        color: c.balanced_acc != null ? col(c.balanced_acc) : '#d1d5db' }}>
+                        {c.balanced_acc != null ? `${c.balanced_acc}%` : '—'}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', color: '#9ca3af' }}>
                         {c.support ?? '—'}
@@ -633,9 +671,9 @@ export default function StudyReport({ job }) {
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
                         {tier
                           ? <span style={{ background: tier.bg, color: tier.color, padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{tier.label}</span>
-                          : <span style={{ color: '#d1d5db', fontSize: 11 }}>Run new study for F1</span>}
+                          : <span style={{ color: '#d1d5db', fontSize: 11 }}>—</span>}
                       </td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', color: '#6b7280', maxWidth: 280, fontSize: 12 }}>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', color: '#6b7280', maxWidth: 260, fontSize: 12 }}>
                         {c.note}
                       </td>
                     </tr>
@@ -710,6 +748,51 @@ export default function StudyReport({ job }) {
           Study ID: {job.study_id || job.id} · Completed: {job.completed_at ? new Date(job.completed_at).toLocaleString() : '—'}
         </p>
       </Sec>
+
+      {/* ── Cite / Methods Paragraph ── */}
+      {(() => {
+        const ciAcc = job.confidence_intervals?.accuracy
+        const paragraph = [
+          `We trained a ${archLabel} classifier using Federated Averaging (McMahan et al., 2017) [CITATION] across ${nodeCount} geographically distributed institution${nodeCount !== 1 ? 's' : ''}.`,
+          `No raw patient data or imaging was transferred between sites; only locally computed model weight updates were aggregated at the central server using FedAvg, preserving patient privacy in compliance with data protection requirements.`,
+          `Training comprised ${totalRounds} global communication round${totalRounds !== 1 ? 's' : ''}${job.local_epochs ? ` with ${job.local_epochs} local epoch${job.local_epochs !== 1 ? 's' : ''} per round per institution` : ''}.`,
+          ds ? `The model was evaluated on the ${ds.full} (${ds.domain}; task: ${ds.task}).` : job.dataset ? `The model was evaluated on the ${job.dataset} dataset.` : '',
+          job.dp_enabled
+            ? `Differential privacy was applied to each model update using the Gaussian mechanism with noise multiplier σ = ${job.dp_noise_multiplier}, providing (ε = ${job.dp_epsilon_spent ?? job.dp_epsilon}, δ = ${job.dp_delta})-DP under the Rényi differential privacy framework (Mironov, 2017) [CITATION].`
+            : '',
+          `Performance was evaluated using micro accuracy, macro-F1, weighted-F1, per-class sensitivity (recall), specificity, and balanced accuracy.`,
+          `Ninety-five percent confidence intervals were estimated via bootstrap resampling (n = 1,000 iterations).`,
+          cohen_kappa != null ? `Inter-rater agreement between model predictions and ground truth labels was κ = ${cohen_kappa.toFixed(3)} (${cohen_kappa >= 0.8 ? 'almost perfect' : cohen_kappa >= 0.6 ? 'substantial' : 'moderate'} agreement, Landis & Koch, 1977 [CITATION]).` : '',
+          `The federated model achieved ${(accuracy * 100).toFixed(1)}% micro accuracy`,
+          ciAcc ? ` (95% CI: ${(ciAcc.ci_lower * 100).toFixed(1)}%–${(ciAcc.ci_upper * 100).toFixed(1)}%)` : '',
+          macro_f1 != null ? `, macro-F1 = ${macro_f1.toFixed(3)}, weighted-F1 = ${weighted_f1?.toFixed(3) ?? '—'}` : '',
+          baseline != null
+            ? `, compared with the published centralised benchmark of ${(baseline * 100).toFixed(1)}% for ${archLabel} on this dataset.`
+            : '.',
+          `All model weights were trained exclusively on local institutional data and aggregated without accessing individual patient records.`,
+          `[Replace bracketed citations with appropriate references for your submission. This paragraph is intended as a draft for the Methods section.]`,
+        ].filter(Boolean).join(' ')
+
+        return (
+          <Sec title="Methods Paragraph (Draft for Publication)">
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 18px', position: 'relative', marginBottom: 12 }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#1e293b', lineHeight: 1.85, fontFamily: 'Georgia, serif' }}>
+                {paragraph}
+              </p>
+              <button
+                onClick={() => { navigator.clipboard.writeText(paragraph).catch(() => {}) }}
+                style={{ position: 'absolute', top: 12, right: 12, padding: '5px 12px', fontSize: 11, fontWeight: 600,
+                  background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+                Copy
+              </button>
+            </div>
+            <p style={{ margin: 0, fontSize: 11, color: '#94a3b8', lineHeight: 1.6 }}>
+              Review and adapt before submission. Replace [CITATION] placeholders with appropriate references.
+              This paragraph covers model choice, FL protocol, privacy, evaluation metrics, and results — standard Methods section requirements for medical AI papers.
+            </p>
+          </Sec>
+        )
+      })()}
 
     </div>
   )

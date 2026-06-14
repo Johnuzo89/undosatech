@@ -1454,11 +1454,14 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                     except: pass
 
             def _prf(c):
-                tp=pc_correct[c]; fp=pc_predicted[c]-tp; fn=pc_total[c]-tp
-                rec = round(tp/max(pc_total[c],1),4)
-                pre = round(tp/max(pc_predicted[c],1),4)
-                f1  = round(2*pre*rec/max(pre+rec,1e-8),4)
-                return rec, pre, f1
+                tp = pc_correct[c]; fp = pc_predicted[c] - tp; fn = pc_total[c] - tp
+                tn = gt - tp - fp - fn
+                rec  = round(tp / max(pc_total[c], 1), 4)
+                pre  = round(tp / max(pc_predicted[c], 1), 4)
+                f1   = round(2 * pre * rec / max(pre + rec, 1e-8), 4)
+                spec = round(tn / max(tn + fp, 1), 4)        # specificity = TN / (TN + FP)
+                bal  = round((rec + spec) / 2, 4)             # balanced accuracy
+                return rec, pre, f1, spec, bal
 
             per_class=[round(pc_correct[c]/max(pc_total[c],1)*100,1) for c in range(num_classes)]
             per_class_dict = {(class_names[c] if c < len(class_names) else f"Class {c}"): per_class[c]
@@ -1466,15 +1469,29 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
             prf_data = {}
             for c in range(num_classes):
-                rec, pre, f1 = _prf(c)
+                rec, pre, f1, spec, bal = _prf(c)
                 label = class_names[c] if c < len(class_names) else f"Class {c}"
                 prf_data[label] = {"recall": rec, "precision": pre, "f1": f1,
+                                   "specificity": spec, "balanced_accuracy": bal,
                                    "support": pc_total[c]}
+
+            # Study-level aggregate metrics
+            macro_f1 = round(sum(v["f1"] for v in prf_data.values()) / max(len(prf_data), 1), 4)
+            total_support = max(sum(pc_total), 1)
+            weighted_f1 = round(
+                sum(prf_data[class_names[c] if c < len(class_names) else f"Class {c}"]["f1"] * pc_total[c]
+                    for c in range(num_classes)) / total_support, 4)
+            # Cohen's kappa: (observed_agreement - expected_agreement) / (1 - expected_agreement)
+            p_o = sum(pc_correct) / max(gt, 1)
+            p_e = sum((pc_total[c] / max(gt, 1)) * (pc_predicted[c] / max(gt, 1))
+                      for c in range(num_classes))
+            cohen_kappa = round((p_o - p_e) / max(1 - p_e, 1e-8), 4)
 
 
             summary = {
                 "round": rnd, "global_accuracy": g_acc, "global_loss": g_loss,
                 "per_class_accuracy": per_class, "per_class_metrics": prf_data,
+                "macro_f1": macro_f1, "weighted_f1": weighted_f1, "cohen_kappa": cohen_kappa,
                 "node_metrics": node_metrics,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
@@ -1549,6 +1566,9 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
         final_acc = round_results[-1]["global_accuracy"]
         final_loss = round_results[-1]["global_loss"]
+        final_macro_f1 = round_results[-1].get("macro_f1")
+        final_weighted_f1 = round_results[-1].get("weighted_f1")
+        final_cohen_kappa = round_results[-1].get("cohen_kappa")
 
         if store:
             store.set_completed(study_id,
@@ -1560,7 +1580,10 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                     interpretability=json.dumps(interp),
                     class_names=json.dumps(class_names),
                     model_storage_key=model_storage_key or "",
-                    per_class_metrics=json.dumps(prf_data))
+                    per_class_metrics=json.dumps(prf_data),
+                    macro_f1=final_macro_f1,
+                    weighted_f1=final_weighted_f1,
+                    cohen_kappa=final_cohen_kappa)
             except Exception:
                 pass
         else:

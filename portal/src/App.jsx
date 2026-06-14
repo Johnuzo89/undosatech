@@ -168,18 +168,108 @@ const ARCH_INFO = {
   cnn:               { name:'Lightweight CNN',   params:'0.5M' },
 }
 const ARCHS = [
-  {v:'resnet18',          l:'ResNet-18',          sub:'11M · Fast · Best general use'},
-  {v:'resnet50',          l:'ResNet-50',          sub:'25M · Medium · Complex pathology'},
-  {v:'resnet101',         l:'ResNet-101',         sub:'44M · Slow · High-res histology'},
-  {v:'densenet121',       l:'DenseNet-121',       sub:'8M · Fast · Radiology / CheXNet'},
-  {v:'efficientnet_b0',   l:'EfficientNet-B0',    sub:'5M · Fast · Resource efficient'},
-  {v:'efficientnet_v2_s', l:'EfficientNet-V2-S',  sub:'21M · Fast · FL-friendly training'},
-  {v:'efficientnet_b4',   l:'EfficientNet-B4',    sub:'19M · Medium · High accuracy'},
-  {v:'mobilenet_v3',      l:'MobileNetV3-Large',  sub:'5M · Fastest · CPU/low-power nodes'},
-  {v:'convnext_tiny',     l:'ConvNeXt-Tiny',      sub:'28M · Medium · Modern CNN'},
-  {v:'swin_t',            l:'Swin-T',             sub:'28M · Medium · Practical transformer'},
-  {v:'vit_b16',           l:'ViT-B/16',           sub:'86M · Slow · Large-scale research'},
-  {v:'cnn',               l:'Lightweight CNN',    sub:'0.5M · Fastest · Quick test'},
+  // ── Recommended ─────────────────────────────────────────────────────────────
+  { v:'resnet18', l:'ResNet-18', params:'11M', speed:'Fast', speedCol:'#059669',
+    cat:'Recommended', badge:'Best default',
+    best:'Reliable on any medical imaging task — the safe starting point',
+    detail:'ResNet-18 is the most-cited backbone in federated medical imaging literature. Residual skip connections prevent vanishing gradients, giving stable training even with small per-institution datasets (as few as 200 samples). In FL it converges in 3–5 rounds. Run this first — if accuracy plateaus, step up to ResNet-50 or DenseNet-121.',
+    avoid:'Top-tier journal benchmarks where you need every fraction of a percent — step up to ResNet-50 or DenseNet-121 for final results.',
+    fl:'Lowest gradient upload size of any non-trivial architecture. Best choice when institutions have heterogeneous hardware or slow network links.',
+    tags:['All modalities','Any dataset size','Best for FL pilots'],
+  },
+  { v:'densenet121', l:'DenseNet-121', params:'8M', speed:'Fast', speedCol:'#059669',
+    cat:'Recommended', badge:'CheXNet',
+    best:'Radiology & chest imaging — the CheXNet architecture, proven in published FL studies',
+    detail:'DenseNet-121 is the architecture behind CheXNet (Rajpurkar et al., 2017), which outperformed radiologists on 14 chest pathologies. Dense connectivity — every layer receives feature maps from all prior layers — preserves fine-grained diagnostic features that matter in radiology. It often outperforms ResNet-50 on radiology tasks with fewer parameters, making it ideal for FL.',
+    avoid:'Large histopathology datasets with many tissue classes (8+) — ResNet-50 or ConvNeXt-Tiny tend to pull ahead there.',
+    fl:'Smallest weight size of any "research-grade" architecture in this list. Excellent for FL over slow institutional VPNs. Gradient compression is highly effective on DenseNet update tensors.',
+    tags:['Chest X-ray','CT','Fundus','Ophthalmology','Radiology'],
+  },
+  // ── High Accuracy ────────────────────────────────────────────────────────────
+  { v:'resnet50', l:'ResNet-50', params:'25M', speed:'Medium', speedCol:'#f59e0b',
+    cat:'High Accuracy',
+    best:'Complex multi-class tasks — the workhorse of published medical AI papers',
+    detail:'ResNet-50 is the most commonly cited backbone in medical imaging publications. Deeper than ResNet-18, it learns more abstract tissue-level features suited to histopathology and multi-lesion radiology. Published MedMNIST benchmarks show consistent +2–4% gains over ResNet-18 across datasets.',
+    avoid:'Institutions with fewer than 500 samples each — the extra capacity increases overfitting risk. Run ResNet-18 first and only step up if it clearly plateaus.',
+    fl:'Moderate communication cost (2× ResNet-18 gradient upload per round). Recommend 5–8 rounds minimum.',
+    tags:['Histopathology','Dermoscopy','Blood smear','Multi-class'],
+  },
+  { v:'convnext_tiny', l:'ConvNeXt-Tiny', params:'28M', speed:'Medium', speedCol:'#f59e0b',
+    cat:'High Accuracy', badge:'Modern CNN',
+    best:'Maximum CNN accuracy — beats ResNet-50 at the same parameter count',
+    detail:'ConvNeXt (Liu et al., 2022) redesigns ResNet using every lesson learned from Vision Transformers: larger kernels (7×7), GELU activations, LayerNorm, inverted bottleneck blocks — while staying a pure convolutional network. It consistently outperforms ResNet-50 at similar size and trains significantly faster than any transformer. The best choice when you want SOTA accuracy without transformer training instability.',
+    avoid:'Institutions where any new dependency is a barrier — ConvNeXt requires a newer torchvision. EfficientNet-V2-S is a simpler alternative at similar accuracy.',
+    fl:'Gradient structure is highly compressible. More stable than transformers across heterogeneous institutional data distributions.',
+    tags:['All modalities','Benchmark studies','Publication results'],
+  },
+  { v:'efficientnet_b4', l:'EfficientNet-B4', params:'19M', speed:'Medium', speedCol:'#f59e0b',
+    cat:'High Accuracy',
+    best:'High-resolution imaging where compound scaling matters — fundus, dermoscopy, WSI patches',
+    detail:'EfficientNet-B4 applies compound scaling — simultaneously widening, deepening, and increasing input resolution — to maximise accuracy per parameter. It outperforms ResNet-50 on most ImageNet benchmarks and transfers well to high-resolution medical images. Particularly strong on dermoscopy (skin lesion) and fundus photography tasks.',
+    avoid:'Studies where training time per FL round is a hard constraint — EfficientNet-V2-S trains ~3× faster at similar accuracy.',
+    fl:'Moderate gradient size. Compound scaling means excellent accuracy-per-byte of gradient uploaded.',
+    tags:['Fundus photography','Dermoscopy','High-resolution imaging'],
+  },
+  // ── Fast & Efficient ─────────────────────────────────────────────────────────
+  { v:'efficientnet_v2_s', l:'EfficientNet-V2-S', params:'21M', speed:'Fast', speedCol:'#059669',
+    cat:'Fast & Efficient', badge:'FL-optimised',
+    best:'Best accuracy-per-training-minute — ideal when compute time at each node matters',
+    detail:'EfficientNet-V2-S (Tan & Le, 2021) was redesigned specifically for training speed using Fused-MBConv blocks that are 2–4× faster to train than standard EfficientNet while matching or exceeding EfficientNet-B4 accuracy. In FL, where training cost compounds across every node and every round, this saving is significant. The practical upgrade path from EfficientNet-B4 when speed matters.',
+    avoid:'Maximum accuracy benchmarks where you can afford long training — ConvNeXt-Tiny may edge it out there.',
+    fl:'Best choice when minimising per-round training time at each institution is a priority. Similar accuracy to B4 at ~60% of the compute per round.',
+    tags:['Speed-critical FL','All modalities','Multi-site studies'],
+  },
+  { v:'efficientnet_b0', l:'EfficientNet-B0', params:'5M', speed:'Fast', speedCol:'#059669',
+    cat:'Fast & Efficient',
+    best:'Resource-constrained nodes or rapid preliminary experiments',
+    detail:'The smallest EfficientNet variant — same compound scaling approach at minimum size. Outperforms ResNet-18 on many medical benchmarks despite using less than half the weights. A sensible choice for preliminary FL runs where you want more accuracy than the Lightweight CNN but faster turnaround than ResNet-18.',
+    avoid:'High-complexity multi-class tasks above 8 classes — the capacity limit starts to hurt. Use ResNet-18 or DenseNet-121 instead.',
+    fl:'Very low communication cost. Second smallest after Lightweight CNN.',
+    tags:['Binary classification','Screening tasks','Low compute'],
+  },
+  { v:'mobilenet_v3', l:'MobileNetV3-Large', params:'5M', speed:'Fastest', speedCol:'#059669',
+    cat:'Fast & Efficient', badge:'CPU-ready',
+    best:'Institutions running on CPU or shared workstations — no GPU required',
+    detail:'MobileNetV3 was engineered for mobile and CPU inference using inverted residuals with hard-swish activations optimised for ARM and x86 processors. In FL, this means institutions without GPU infrastructure can still participate without making local training impractical. On a modern laptop CPU, one training round takes minutes not hours.',
+    avoid:'Accuracy-critical benchmarks — MobileNetV3 trades accuracy for speed. Use when node participation matters more than peak accuracy.',
+    fl:'The best FL choice for institutions with no GPU. 10–30× faster than ViT-B/16 on CPU. Strongly consider this when recruiting sites with limited hardware.',
+    tags:['CPU-only nodes','Low-resource institutions','Mobile/edge deployment'],
+  },
+  // ── Transformers ─────────────────────────────────────────────────────────────
+  { v:'swin_t', l:'Swin-T', params:'28M', speed:'Medium', speedCol:'#f59e0b',
+    cat:'Transformers', badge:'Hierarchical ViT',
+    best:'Attention-based features without ViT\'s cost or image-size constraints',
+    detail:'Swin Transformer (Liu et al., 2021) uses shifted window attention — local attention that shifts between layers to allow cross-window connections — producing hierarchical features compatible with any image size. Unlike ViT-B/16 which needs 224×224 inputs, Swin-T works on the 28×28 images used here and produces more spatially rich features. It matches ViT-B/16 accuracy at ~30% of the parameter count.',
+    avoid:'Studies with very few samples per institution (< 300 each) — transformers need more data than CNNs to generalise without overfitting.',
+    fl:'More stable than ViT-B/16 in heterogeneous FL due to local attention inductive biases. Still 3× heavier than DenseNet-121.',
+    tags:['Large datasets','Multi-site studies','Attention features'],
+  },
+  { v:'vit_b16', l:'ViT-B/16', params:'86M', speed:'Slow', speedCol:'#dc2626',
+    cat:'Transformers', badge:'Research-grade',
+    best:'Large-scale multi-institution studies aiming for top-tier journal benchmarks',
+    detail:'Vision Transformer-B/16 (Dosovitskiy et al., 2021) processes images as sequences of 16×16 patches with global self-attention across all patches. It achieves the highest accuracy in this list on sufficiently large datasets, but requires more data to converge than CNNs and is the slowest to train. Best reserved for final benchmark runs after architecture selection is done with a smaller model.',
+    avoid:'Small per-institution datasets, CPU-only nodes, preliminary studies, or any study where training instability would be disruptive. ViT training can be sensitive to learning rate in heterogeneous FL.',
+    fl:'Highest communication cost (86M params — 8× ResNet-18). Requires ≥ 7 rounds to converge. Only use when all institutions have GPU and the scientific question justifies the overhead.',
+    tags:['Large-scale FL','GPU required','Top-tier benchmark'],
+  },
+  // ── Large / Deep ─────────────────────────────────────────────────────────────
+  { v:'resnet101', l:'ResNet-101', params:'44M', speed:'Slow', speedCol:'#dc2626',
+    cat:'Large / Deep',
+    best:'High-resolution histology patches with very large per-institution datasets',
+    detail:'ResNet-101 provides the deepest feature extraction of the ResNet family here, with 101 layers learning highly abstract representations. The extra depth helps when learning very fine-grained tissue-level patterns in high-resolution histopathology. However, accuracy gains over ResNet-50 are typically 1–3% on medical datasets, while training cost increases ~75%.',
+    avoid:'Most FL studies — ResNet-50 almost always performs within 1–2% at much lower cost. Only reach for ResNet-101 when ResNet-50 shows a clear accuracy plateau after tuning rounds and local epochs.',
+    fl:'High communication cost (4× ResNet-18). Recommend more rounds with fewer local epochs to reduce gradient divergence across heterogeneous sites.',
+    tags:['High-res histology','Large datasets','Research only'],
+  },
+  // ── Quick Testing ─────────────────────────────────────────────────────────────
+  { v:'cnn', l:'Lightweight CNN', params:'0.5M', speed:'Fastest', speedCol:'#059669',
+    cat:'Quick Testing', badge:'Debug only',
+    best:'Verifying setup, testing pipeline integration, or teaching demonstrations',
+    detail:'A minimal 2-layer custom CNN (Conv-BN-ReLU-MaxPool × 2 + FC). Completes training in under 30 seconds. Not intended for scientific results — accuracy will be substantially lower than all other options. Its sole purpose is to confirm instantly that datasets load correctly, the FL pipeline functions end-to-end, and per-class metrics compute properly before committing real compute to a serious architecture.',
+    avoid:'Any study intended to produce reportable or publishable results.',
+    fl:'Instant convergence. Ideal for debugging node connectivity and round mechanics before a real run.',
+    tags:['Pipeline testing','Demo','Teaching'],
+  },
 ]
 const DATASETS = [
   {v:'octmnist',       l:'OCTMNIST — Retinal OCT (4 classes)'},
@@ -545,6 +635,62 @@ function AuthScreen({ onAuth }) {
 
 // ── LAUNCH FORM ───────────────────────────────────────────────────────────────
 
+const ARCH_GROUPS = ['Recommended','High Accuracy','Fast & Efficient','Transformers','Large / Deep','Quick Testing']
+
+function ModelPicker({ value, onChange }) {
+  return (
+    <div>
+      {ARCH_GROUPS.map(group => {
+        const list = ARCHS.filter(a => a.cat === group)
+        if (!list.length) return null
+        return (
+          <div key={group} style={{marginBottom:16}}>
+            <div style={{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:6,paddingLeft:2}}>{group}</div>
+            {list.map(a => {
+              const sel = value === a.v
+              return (
+                <div key={a.v} style={{marginBottom:6}}>
+                  <div onClick={()=>onChange(a.v)}
+                    style={{border:`2px solid ${sel?'#1d4ed8':'#e5e7eb'}`,borderRadius:sel?'10px 10px 0 0':10,padding:'10px 14px',cursor:'pointer',
+                      background:sel?'#eff6ff':'#fff',transition:'all 0.15s'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                      <div style={{fontWeight:700,fontSize:13,color:sel?'#1d4ed8':'#374151'}}>{a.l}</div>
+                      <div style={{display:'flex',gap:4,alignItems:'center',flexShrink:0}}>
+                        {a.badge&&<span style={{background:'#fef3c7',color:'#92400e',borderRadius:4,fontSize:10,fontWeight:700,padding:'1px 6px',whiteSpace:'nowrap'}}>{a.badge}</span>}
+                        <span style={{background:'#f3f4f6',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:4,fontSize:10,fontWeight:600,padding:'1px 6px'}}>{a.params}</span>
+                        <span style={{color:a.speedCol,fontSize:10,fontWeight:700,whiteSpace:'nowrap'}}>{a.speed}</span>
+                      </div>
+                    </div>
+                    <div style={{fontSize:11,color:sel?'#3b82f6':'#6b7280',marginTop:3}}>{a.best}</div>
+                  </div>
+                  {sel&&(
+                    <div style={{background:'#f0f7ff',border:'2px solid #1d4ed8',borderTop:'1px solid #bfdbfe',borderRadius:'0 0 10px 10px',padding:'14px 16px'}}>
+                      <p style={{margin:'0 0 10px',fontSize:12,color:'#1e3a8a',lineHeight:1.7}}>{a.detail}</p>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+                        <div style={{background:'#fffbeb',borderRadius:8,padding:'8px 12px',border:'1px solid #fde68a'}}>
+                          <div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.05em'}}>When to avoid</div>
+                          <div style={{fontSize:11,color:'#78350f',lineHeight:1.6}}>{a.avoid}</div>
+                        </div>
+                        <div style={{background:'#e0f2fe',borderRadius:8,padding:'8px 12px',border:'1px solid #bae6fd'}}>
+                          <div style={{fontSize:10,fontWeight:700,color:'#0369a1',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.05em'}}>FL considerations</div>
+                          <div style={{fontSize:11,color:'#0c4a6e',lineHeight:1.6}}>{a.fl}</div>
+                        </div>
+                      </div>
+                      <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                        {a.tags.map(t=><span key={t} style={{background:'#e0e7ff',color:'#3730a3',borderRadius:4,fontSize:10,fontWeight:600,padding:'2px 8px'}}>{t}</span>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const [file,setFile]=useState(null); const [drag,setDrag]=useState(false)
   const [busy,setBusy]=useState(false); const [err,setErr]=useState(null)
@@ -698,16 +844,8 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         )}
       </div>
       <div style={S.card}>
-        <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.05em'}}>AI Model Architecture</div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          {ARCHS.map(a=>(
-            <div key={a.v} onClick={()=>set('architecture',a.v)}
-              style={{border:`2px solid ${form.architecture===a.v?'#1d4ed8':'#e5e7eb'}`,borderRadius:8,padding:'10px 12px',cursor:'pointer',background:form.architecture===a.v?'#eff6ff':'#fff'}}>
-              <div style={{fontWeight:600,fontSize:13,color:form.architecture===a.v?'#1d4ed8':'#374151'}}>{a.l}</div>
-              <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>{a.sub}</div>
-            </div>
-          ))}
-        </div>
+        <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',marginBottom:14,textTransform:'uppercase',letterSpacing:'0.05em'}}>AI Model Architecture</div>
+        <ModelPicker value={form.architecture} onChange={v=>set('architecture',v)}/>
       </div>
       <div style={S.card}>
         <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',marginBottom:12,textTransform:'uppercase',letterSpacing:'0.05em'}}>Training configuration</div>
