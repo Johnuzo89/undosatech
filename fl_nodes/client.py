@@ -347,12 +347,49 @@ def run_flower_client(server_address: str):
                     train_ds, val_ds = random_split(ds, [n_train, len(ds) - n_train])
                     return DataLoader(train_ds, 32, shuffle=True), DataLoader(val_ds, 32)
                 """
-                from torch.utils.data import TensorDataset, DataLoader, random_split
+                import os, pathlib
                 import torch
-                torch.manual_seed(42)
-                # Synthetic placeholder — replace with real local data:
-                X = torch.randn(500, 3, 28, 28)
-                y = torch.randint(0, 4, (500,))
+                from torch.utils.data import TensorDataset, DataLoader, random_split
+
+                data_dir = pathlib.Path(os.environ.get("DATA_DIR", "/data"))
+
+                if (data_dir / "local_dataset.npz").exists():
+                    import numpy as np
+                    raw = np.load(str(data_dir / "local_dataset.npz"))
+                    keys = list(raw.keys())
+                    X = torch.FloatTensor(raw[keys[0]])
+                    y = torch.LongTensor(raw[keys[1]].flatten())
+                elif (data_dir / "local_dataset.csv").exists():
+                    import pandas as pd
+                    df = pd.read_csv(str(data_dir / "local_dataset.csv"))
+                    y_raw = df.iloc[:, -1]
+                    classes = sorted(y_raw.unique())
+                    y = torch.LongTensor(y_raw.map({c: i for i, c in enumerate(classes)}).values.astype("int64"))
+                    X = torch.FloatTensor(df.iloc[:, :-1].values.astype("float32")).unsqueeze(1).unsqueeze(-1)
+                elif (data_dir / "images").exists():
+                    from torchvision import transforms, datasets
+                    tf = transforms.Compose([
+                        transforms.Resize((28, 28)),
+                        transforms.Grayscale(1),
+                        transforms.ToTensor(),
+                        transforms.Normalize([0.5], [0.5]),
+                    ])
+                    img_ds = datasets.ImageFolder(str(data_dir / "images"), transform=tf)
+                    X = torch.stack([img_ds[i][0] for i in range(len(img_ds))])
+                    y = torch.LongTensor([img_ds[i][1] for i in range(len(img_ds))])
+                else:
+                    raise RuntimeError(
+                        f"No dataset found in {data_dir}. Mount one of: "
+                        f"{data_dir}/local_dataset.npz, "
+                        f"{data_dir}/local_dataset.csv, or "
+                        f"{data_dir}/images/<class_name>/*.png"
+                    )
+
+                if X.dim() == 3:
+                    X = X.unsqueeze(1)
+                if X.shape[1] not in [1, 3]:
+                    X = X.permute(0, 3, 1, 2)
+                X = X / 255.0 if X.max() > 1.0 else X
                 ds = TensorDataset(X, y)
                 n_train = int(len(ds) * 0.8)
                 train_ds, val_ds = random_split(ds, [n_train, len(ds) - n_train])

@@ -608,10 +608,40 @@ async def lifespan(app):
                     store.set_failed(sid, "Server restarted — no checkpoint found. Please re-run the study.")
                     logger.warning(f"[{sid[:8]}] No checkpoint — marked failed")
                 else:
-                    logger.info(f"[{sid[:8]}] Recovering from round {ckpt['round']}")
-                    store.set_failed(sid, f"Recovered: server restarted after round {ckpt['round']}. Re-launch to continue from checkpoint (auto-resume coming soon).")
+                    try:
+                        full_study = supabase_admin.table("studies").select("*").eq("id", sid).maybe_single().execute()
+                        full_study = full_study.data or {}
+                        s_dataset  = full_study.get("dataset", "octmnist")
+                        s_arch     = full_study.get("model", "resnet18")
+                        s_rounds   = int(full_study.get("num_rounds") or 5)
+                        s_dp       = full_study.get("dp_noise_multiplier")
+                        node_ids   = full_study.get("nodes") or []
+                        s_nodes    = [{"node_id": n} for n in node_ids] if isinstance(node_ids, list) else []
+                        up_files   = list(UPLOADS_DIR.glob(f"{sid}.*"))
+                        s_upload   = up_files[0] if up_files else None
+                        resume_rnd = ckpt["round"]
+                        store.set_running(sid)
+                        store.append_log(sid, f"♻️ Auto-resuming from checkpoint (round {resume_rnd}/{s_rounds})", level="info")
+                        threading.Thread(
+                            target=train_thread,
+                            args=(sid, s_upload, s_dataset, s_rounds, 2, s_arch, s_nodes, s_dp),
+                            kwargs={"resume_from": resume_rnd, "initial_state": ckpt["model_state"], "prior_results": ckpt["round_results"]},
+                            daemon=True, name=f"train-{sid[:8]}"
+                        ).start()
+                        logger.info(f"[{sid[:8]}] Auto-resumed from round {resume_rnd}/{s_rounds}")
+                    except Exception as resume_err:
+                        logger.warning(f"[{sid[:8]}] Auto-resume failed: {resume_err}")
+                        store.set_failed(sid, f"Server restarted after round {ckpt['round']}. Auto-resume failed ({resume_err}). Please re-launch.")
         except Exception as e:
             logger.warning(f"Recovery scan failed: {e}")
+        # Check required tables exist
+        try:
+            supabase_admin.table("data_connections").select("id").limit(1).execute()
+        except Exception:
+            logger.warning(
+                "⚠️  data_connections table missing. "
+                "Run supabase_connectors_migration.sql in the Supabase SQL Editor to enable REDCap/OMOP features."
+            )
     elif store:
         try:
             interrupted = store.list_running()
@@ -703,6 +733,61 @@ def _send_approval_email(to_email: str, full_name: str, login_url: str) -> Optio
     except Exception as e:
         logger.warning(f"Approval email failed for {to_email}: {e}")
         return str(e)
+
+
+def _send_invitation_email(to_email: str, node_name: str, study_name: str, invited_by_email: str, message: str = "") -> Optional[str]:
+    """Send study invitation email to a node operator via Resend."""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — skipping invitation email")
+        return "RESEND_API_KEY not configured"
+    try:
+        import resend
+        resend.api_key = RESEND_API_KEY
+        portal_url = "https://app.undosatech.com"
+        msg_block = f"<p style='font-size:14px;color:#374151;line-height:1.5;margin:0 0 16px;'>Message from researcher: <em>{message}</em></p>" if message else ""
+        resend.Emails.send({
+            "from": "UndosaTech <admin@undosatech.com>",
+            "to": [to_email],
+            "subject": f"Study invitation: {study_name}",
+            "html": f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#f9fafb;margin:0;padding:32px;">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;border:1px solid #e5e7eb;">
+    <div style="font-size:22px;font-weight:800;color:#1d4ed8;margin-bottom:4px;">UndosaTech</div>
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:32px;">Federated Research Platform</div>
+    <p style="font-size:16px;color:#111827;margin:0 0 16px;">Dear {node_name},</p>
+    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 16px;">
+      You have been invited to participate in the federated learning study
+      <strong>"{study_name}"</strong> by <strong>{invited_by_email}</strong>.
+    </p>
+    {msg_block}
+    <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 24px;">
+      Log in to the portal to review and accept or decline this invitation.
+    </p>
+    <div style="text-align:center;margin:0 0 32px;">
+      <a href="{portal_url}" style="background:#1d4ed8;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">View Invitation</a>
+    </div>
+    <p style="font-size:12px;color:#9ca3af;">UndosaTech · Federated Learning Platform · app.undosatech.com</p>
+  </div>
+</body>
+</html>""",
+        })
+        return None
+    except Exception as e:
+        logger.warning(f"Invitation email to {to_email} failed: {e}")
+        return str(e)
+
+
+def _get_node_contact(node_id: str) -> tuple:
+    """Return (contact_email, institution_name) for a node, or ('', node_id) if unknown."""
+    if not supabase_admin:
+        return ("", node_id)
+    try:
+        result = supabase_admin.table("fl_nodes").select("contact_email,institution_name").eq("node_id", node_id).maybe_single().execute()
+        data = result.data or {}
+        return (data.get("contact_email", ""), data.get("institution_name", node_id))
+    except Exception:
+        return ("", node_id)
 
 
 # ── Institutional domain detection ───────────────────────────────────────────
@@ -871,6 +956,37 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
                 extract_dir.mkdir(exist_ok=True)
                 with zipfile.ZipFile(str(upload_path),'r') as z:
                     z.extractall(str(extract_dir))
+                # Check if ZIP contains DICOM files in class subfolders
+                dcm_files = list(extract_dir.rglob("*.dcm")) + list(extract_dir.rglob("*.dicom"))
+                if dcm_files:
+                    import pydicom, torch.nn.functional as F
+                    class_dirs = sorted([d for d in extract_dir.iterdir() if d.is_dir()])
+                    class_names = [d.name for d in class_dirs]
+                    X_list, y_list = [], []
+                    for cls_idx, cls_dir in enumerate(class_dirs):
+                        for dp in sorted(list(cls_dir.glob("*.dcm")) + list(cls_dir.glob("*.dicom"))):
+                            try:
+                                dcm = pydicom.dcmread(str(dp))
+                                arr = dcm.pixel_array.astype("float32")
+                                arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)
+                                if arr.ndim == 2:
+                                    arr = np.expand_dims(arr, 0)
+                                elif arr.ndim == 3:
+                                    arr = arr.transpose(2, 0, 1)
+                                t = torch.FloatTensor(arr).unsqueeze(0)
+                                t = F.interpolate(t, size=(28,28), mode='bilinear', align_corners=False).squeeze(0)
+                                X_list.append(t); y_list.append(cls_idx)
+                            except Exception as de:
+                                logger.warning(f"DICOM file {dp.name} skipped: {de}")
+                    if not X_list:
+                        raise ValueError("No DICOM files could be read from ZIP")
+                    X = torch.stack(X_list); y = torch.LongTensor(y_list)
+                    in_ch = X.shape[1]; n_cls = len(class_names)
+                    ds = TensorDataset(X, y); n_train = int(len(ds)*0.8)
+                    train_ds, test_ds = random_split(ds, [n_train, len(ds)-n_train])
+                    return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
+                            DataLoader(test_ds,32,shuffle=False,num_workers=0),
+                            n_cls, in_ch, f"DICOM ZIP: {len(X)} scans · {n_cls} classes", class_names)
                 tf = transforms.Compose([transforms.Resize((28,28)), transforms.Grayscale(1),
                                          transforms.ToTensor(), transforms.Normalize([0.5],[0.5])])
                 ds = datasets.ImageFolder(str(extract_dir), transform=tf)
@@ -884,16 +1000,28 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
 
         if suffix in [".dcm",".dicom"]:
             try:
-                import pydicom
+                import pydicom, torch.nn.functional as F
                 ds_dcm = pydicom.dcmread(str(upload_path))
                 arr = ds_dcm.pixel_array.astype("float32")
                 arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)
-                X = torch.FloatTensor(arr).unsqueeze(0).unsqueeze(0).repeat(100,1,1,1)
-                y = torch.randint(0,2,(100,)); ds=TensorDataset(X,y)
-                train_ds,test_ds=random_split(ds,[80,20])
+                if arr.ndim == 2:
+                    arr_t = torch.FloatTensor(arr).unsqueeze(0)
+                else:
+                    arr_t = torch.FloatTensor(arr.transpose(2,0,1))
+                img = F.interpolate(arr_t.unsqueeze(0), size=(28,28), mode='bilinear', align_corners=False).squeeze(0)
+                in_ch = img.shape[0]
+                # Derive label from DICOM tags; default 0 if no diagnosis keywords found
+                study_desc  = str(getattr(ds_dcm, 'StudyDescription',  '') or '')
+                series_desc = str(getattr(ds_dcm, 'SeriesDescription', '') or '')
+                combined = (study_desc + ' ' + series_desc).lower()
+                label = 1 if any(w in combined for w in ['positive','malignant','abnormal','disease','patholog']) else 0
+                X = img.unsqueeze(0).repeat(200,1,1,1)
+                y = torch.full((200,), label, dtype=torch.long)
+                ds = TensorDataset(X, y); train_ds, test_ds = random_split(ds, [160, 40])
+                logger.warning("Single DICOM uploaded — for real multi-class FL, upload a ZIP with class-named subfolders containing .dcm files")
                 return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
                         DataLoader(test_ds,32,shuffle=False,num_workers=0),
-                        2,1,"DICOM demo",["Class 0","Class 1"])
+                        2, in_ch, "DICOM (single file — upload ZIP for multi-class)", ["Negative","Positive"])
             except Exception as e:
                 logger.warning(f"DICOM failed: {e}")
 
@@ -1120,7 +1248,7 @@ def _run_flower_server(study_id: str, num_rounds: int, num_clients: int, arch: s
 
 
 # ── Training thread ───────────────────────────────────────────────────────────
-def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, arch, nodes_config, dp_noise_multiplier=None):
+def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, arch, nodes_config, dp_noise_multiplier=None, resume_from=0, initial_state=None, prior_results=None):
     import torch, torch.nn as nn, torch.optim as optim
 
     logger.info(f"[{study_id[:8]}] Thread started — {arch} on {dataset_name}")
@@ -1175,9 +1303,17 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
         multilabel_datasets = ['chestmnist']
         is_multilabel = dataset_name.lower() in multilabel_datasets
         criterion = nn.BCEWithLogitsLoss() if is_multilabel else nn.CrossEntropyLoss()
-        round_results = []
+        round_results = list(prior_results) if prior_results else []
 
-        for rnd in range(1, num_rounds+1):
+        if initial_state:
+            from collections import OrderedDict
+            state = OrderedDict({k: torch.tensor(v) if not isinstance(v, torch.Tensor) else v
+                                 for k, v in initial_state.items()})
+            for m in node_models:
+                m.load_state_dict(state, strict=True)
+            log(f"♻️ Resumed from checkpoint — starting round {resume_from + 1}/{num_rounds}")
+
+        for rnd in range(resume_from + 1, num_rounds+1):
             # Check stop signal
             if stop_events.get(study_id):
                 log("Training stopped by user", level="warning")
@@ -1539,6 +1675,13 @@ async def create_study(
         with open(upload_path,"wb") as f_out:
             shutil.copyfileobj(file.file, f_out)
 
+    # Connector dataset: dataset value is a UUID pointing to an existing CSV
+    if upload_path is None and dataset and len(dataset) == 36 and dataset.count('-') == 4:
+        connector_path = UPLOADS_DIR / f"{dataset}.csv"
+        if connector_path.exists():
+            upload_path = connector_path
+            dataset = "upload"
+
     try: nodes_config = json.loads(nodes)
     except: nodes_config = []
 
@@ -1611,6 +1754,10 @@ async def create_study(
                         "message": invitation_message or "",
                         "status": "pending",
                     }).execute()
+                    contact_email, node_name = _get_node_contact(nid)
+                    if contact_email:
+                        _send_invitation_email(contact_email, node_name, study_name,
+                                               getattr(user, "email", ""), invitation_message or "")
                 except Exception as e:
                     logger.warning(f"Auto-invite for node {nid} failed: {e}")
 
@@ -1955,6 +2102,29 @@ def list_datasets():
             {"id":"cnn",             "name":"Lightweight CNN", "params":"0.5M", "speed":"Fastest", "best_for":"Quick experiments"},
         ]
     }
+
+
+@app.get("/datasets/connected")
+async def list_connected_datasets(authorization: Optional[str] = Header(None)):
+    """Return datasets imported via REDCap/OMOP connectors that have an associated file."""
+    user = _require_user(authorization)
+    conns = _list_connections(str(user.id))
+    result = []
+    for c in conns:
+        cfg = c.get("config", {})
+        if isinstance(cfg, str):
+            try: cfg = json.loads(cfg)
+            except: cfg = {}
+        dataset_id = cfg.get("dataset_id")
+        if dataset_id and (UPLOADS_DIR / f"{dataset_id}.csv").exists():
+            result.append({
+                "id": dataset_id,
+                "name": c.get("name", "Connected Dataset"),
+                "connection_type": c.get("connection_type", "unknown"),
+                "connection_id": c.get("id"),
+                "created_at": c.get("created_at"),
+            })
+    return result
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2477,6 +2647,10 @@ async def invite_nodes(study_id: str, req: InviteNodesRequest, authorization: Op
                 "message": req.message,
                 "status": "pending",
             }, on_conflict="study_id,node_id").execute()
+            contact_email, node_name = _get_node_contact(node_id)
+            if contact_email:
+                _send_invitation_email(contact_email, node_name, study_name,
+                                       getattr(user, "email", ""), req.message)
             results.append({"node_id": node_id, "status": "invited"})
         except Exception as e:
             results.append({"node_id": node_id, "error": str(e)})

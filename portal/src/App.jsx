@@ -541,12 +541,19 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const [preset,setPreset]=useState('standard')
   const [invitationMessage,setInvitationMessage]=useState('')
   const [classDescs,setClassDescs]=useState([{name:'',desc:''}])
+  const [connectedDatasets,setConnectedDatasets]=useState([])
   const [form,setForm]=useState({
     study_name:'', researcher_name: user?.user_metadata?.full_name || '',
     institution: user?.user_metadata?.institution || '',
     dataset:'octmnist', architecture:'resnet18', num_rounds:5, local_epochs:2, dp_enabled:false, dp_epsilon:1.0
   })
   const ref=useRef(); const set=(k,v)=>setForm(f=>({...f,[k]:v}))
+
+  useEffect(()=>{
+    if(!session?.access_token) return
+    fetch(`${API}/datasets/connected`,{headers:{Authorization:`Bearer ${session.access_token}`}})
+      .then(r=>r.ok?r.json():[]).then(d=>setConnectedDatasets(d||[])).catch(()=>{})
+  },[session?.access_token])
 
   const addClassDesc  = () => setClassDescs(d=>[...d,{name:'',desc:''}])
   const removeClassDesc = i => setClassDescs(d=>d.filter((_,j)=>j!==i))
@@ -621,6 +628,11 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
           <optgroup label="Medical Imaging (MedMNIST)">
             {DATASETS.filter(d=>d.v!=='upload').map(d=><option key={d.v} value={d.v}>{d.l}</option>)}
           </optgroup>
+          {connectedDatasets.length>0&&(
+            <optgroup label="Connected Datasets (REDCap / OMOP)">
+              {connectedDatasets.map(d=><option key={d.id} value={d.id}>{d.name} ({d.connection_type.toUpperCase()})</option>)}
+            </optgroup>
+          )}
           <optgroup label="Upload Your Own">
             <option value="upload">Upload custom dataset (NPZ, CSV, ZIP, DICOM)</option>
           </optgroup>
