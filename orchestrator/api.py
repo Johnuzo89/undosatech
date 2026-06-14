@@ -14,6 +14,10 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("undosatech")
 
+# Silence verbose HTTP-client loggers so Railway logs only show app-level events
+for _noisy in ("httpx", "httpcore", "hpack", "urllib3", "supabase", "postgrest", "gotrue"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 WEIGHTS_DIR = Path("weights")
 UPLOADS_DIR = Path("uploads")
 AUDIT_PATH  = Path("audit_log.jsonl")
@@ -594,6 +598,11 @@ def _download_model_from_storage(storage_key: str) -> Optional[bytes]:
 
 @asynccontextmanager
 async def lifespan(app):
+    logger.info("=" * 60)
+    logger.info("UndosaTech Orchestrator — starting up")
+    logger.info(f"  Supabase: {'connected' if store else 'OFFLINE (in-memory fallback)'}")
+    logger.info(f"  Storage bucket: models")
+    logger.info("=" * 60)
     _ensure_model_bucket()
     if store and supabase_admin:
         try:
@@ -1319,6 +1328,9 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 log(f"Dataset: {desc}")
 
         audit(study_id, "study_started", {"dataset": dataset_name, "arch": arch, "nodes": node_names})
+        logger.info(f"{'─'*60}")
+        logger.info(f"[TRAIN START] {study_id[:8]} | {arch} | {dataset_name} | {num_rounds} rounds | {num_nodes} nodes | img {img_size}px")
+        logger.info(f"{'─'*60}")
 
         if dp_noise_multiplier:
             dp_epsilon = round(1.0 / dp_noise_multiplier, 4)
@@ -1351,6 +1363,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 else: jobs[study_id]["status"] = "cancelled"
                 return
 
+            logger.info(f"[ROUND {rnd:02d}/{num_rounds}] {study_id[:8]} starting…")
             log(f"Round {rnd}/{num_rounds} — starting")
             if store: store.set_round(study_id, rnd)
             else: jobs[study_id]["current_round"] = rnd
@@ -1526,6 +1539,7 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
                 round_results)
 
             audit(study_id, "round_completed", {"round": rnd, "global_accuracy": g_acc})
+            logger.info(f"[ROUND {rnd:02d}/{num_rounds}] {study_id[:8]} ✓ acc={g_acc:.3f} loss={g_loss:.4f}")
             log(f"Round {rnd} complete — global acc={g_acc:.3f} loss={g_loss:.4f}",
                 round_number=rnd, metrics={"accuracy": g_acc, "loss": g_loss})
 
@@ -1602,6 +1616,9 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
             })
 
         audit(study_id, "study_completed", {"final_accuracy": final_acc, "model_path": str(fp)})
+        logger.info(f"{'═'*60}")
+        logger.info(f"[TRAIN DONE] {study_id[:8]} | acc={final_acc:.3f} | loss={final_loss:.4f} | κ={final_cohen_kappa}")
+        logger.info(f"{'═'*60}")
         log(f"✓ Training complete. Final accuracy: {final_acc:.3f}")
 
     except Exception as e:
@@ -1622,11 +1639,15 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
 @app.get("/health")
 def health():
-    return {
+    active = [sid[:8] for sid, j in jobs.items() if j.get("status") == "running"]
+    resp = {
         "status": "ok", "version": "6.0.0",
         "storage": "supabase" if store else "in-memory",
-        "studies": len(jobs) if not store else "see /studies",
+        "active_studies": len(active),
+        "active_study_ids": active,
     }
+    logger.info(f"[health] OK — storage={'supabase' if store else 'in-memory'} active={len(active)}")
+    return resp
 
 
 # ── Public auth helpers ───────────────────────────────────────────────────────
