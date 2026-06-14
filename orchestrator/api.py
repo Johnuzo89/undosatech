@@ -1073,6 +1073,31 @@ def build_model(num_classes, in_channels, arch="resnet18"):
             logger.warning("ViT failed, falling back to ResNet18")
             m = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
             m = adapt_first_conv(m, in_channels); m.fc = nn.Linear(m.fc.in_features, num_classes); return m
+    if arch == "densenet121":
+        m = models.densenet121(weights=models.DenseNet121_Weights.IMAGENET1K_V1)
+        if in_channels != 3:
+            m.features.conv0 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        m.classifier = nn.Linear(m.classifier.in_features, num_classes); return m
+    if arch == "mobilenet_v3":
+        m = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.IMAGENET1K_V1)
+        if in_channels != 3:
+            m.features[0][0] = nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1, bias=False)
+        m.classifier[3] = nn.Linear(m.classifier[3].in_features, num_classes); return m
+    if arch == "convnext_tiny":
+        m = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1)
+        if in_channels != 3:
+            m.features[0][0] = nn.Conv2d(in_channels, 96, kernel_size=4, stride=4)
+        m.classifier[2] = nn.Linear(m.classifier[2].in_features, num_classes); return m
+    if arch == "swin_t":
+        m = models.swin_t(weights=models.Swin_T_Weights.IMAGENET1K_V1)
+        if in_channels != 3:
+            m.features[0][0] = nn.Conv2d(in_channels, 96, kernel_size=4, stride=4)
+        m.head = nn.Linear(m.head.in_features, num_classes); return m
+    if arch == "efficientnet_v2_s":
+        m = models.efficientnet_v2_s(weights=models.EfficientNet_V2_S_Weights.IMAGENET1K_V1)
+        if in_channels != 3:
+            m.features[0][0] = nn.Conv2d(in_channels, 24, kernel_size=3, stride=2, padding=1, bias=False)
+        m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes); return m
 
     return __import__('torch').nn.Sequential(
         __import__('torch').nn.Conv2d(in_channels,32,3,padding=1),__import__('torch').nn.BatchNorm2d(32),__import__('torch').nn.ReLU(),__import__('torch').nn.MaxPool2d(2),
@@ -2093,13 +2118,18 @@ def list_datasets():
         ],
         "upload_formats": ["NPZ","CSV","ZIP (image folders)","DICOM","JPG","PNG"],
         "architectures": [
-            {"id":"resnet18",        "name":"ResNet-18",       "params":"11M",  "speed":"Fast",    "best_for":"General medical imaging"},
-            {"id":"resnet50",        "name":"ResNet-50",       "params":"25M",  "speed":"Medium",  "best_for":"Complex pathology"},
-            {"id":"resnet101",       "name":"ResNet-101",      "params":"44M",  "speed":"Slow",    "best_for":"High-res histology"},
-            {"id":"efficientnet_b0", "name":"EfficientNet-B0", "params":"5M",   "speed":"Fast",    "best_for":"Resource-constrained nodes"},
-            {"id":"efficientnet_b4", "name":"EfficientNet-B4", "params":"19M",  "speed":"Medium",  "best_for":"High accuracy imaging"},
-            {"id":"vit_b16",         "name":"ViT-B/16",        "params":"86M",  "speed":"Slow",    "best_for":"Large-scale research"},
-            {"id":"cnn",             "name":"Lightweight CNN", "params":"0.5M", "speed":"Fastest", "best_for":"Quick experiments"},
+            {"id":"resnet18",          "name":"ResNet-18",          "params":"11M",  "speed":"Fast",    "best_for":"General medical imaging"},
+            {"id":"resnet50",          "name":"ResNet-50",          "params":"25M",  "speed":"Medium",  "best_for":"Complex pathology"},
+            {"id":"resnet101",         "name":"ResNet-101",         "params":"44M",  "speed":"Slow",    "best_for":"High-res histology"},
+            {"id":"densenet121",       "name":"DenseNet-121",       "params":"8M",   "speed":"Fast",    "best_for":"Radiology & chest X-ray (CheXNet architecture)"},
+            {"id":"efficientnet_b0",   "name":"EfficientNet-B0",    "params":"5M",   "speed":"Fast",    "best_for":"Resource-constrained nodes"},
+            {"id":"efficientnet_b4",   "name":"EfficientNet-B4",    "params":"19M",  "speed":"Medium",  "best_for":"High accuracy imaging"},
+            {"id":"efficientnet_v2_s", "name":"EfficientNet-V2-S",  "params":"21M",  "speed":"Fast",    "best_for":"Faster training than B4, FL-friendly"},
+            {"id":"mobilenet_v3",      "name":"MobileNetV3-Large",  "params":"5M",   "speed":"Fastest", "best_for":"Low-power / CPU-only nodes"},
+            {"id":"convnext_tiny",     "name":"ConvNeXt-Tiny",      "params":"28M",  "speed":"Medium",  "best_for":"Modern CNN — beats ResNet at same size"},
+            {"id":"swin_t",            "name":"Swin-T",             "params":"28M",  "speed":"Medium",  "best_for":"Hierarchical transformer — practical ViT alternative"},
+            {"id":"vit_b16",           "name":"ViT-B/16",           "params":"86M",  "speed":"Slow",    "best_for":"Large-scale research"},
+            {"id":"cnn",               "name":"Lightweight CNN",    "params":"0.5M", "speed":"Fastest", "best_for":"Quick experiments"},
         ]
     }
 
