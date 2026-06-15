@@ -1297,7 +1297,12 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
     def update_job(**kwargs):
         if store:
-            store.update(study_id, **kwargs)
+            try:
+                store.update(study_id, **kwargs)
+            except Exception as _ue:
+                # Silently skip metadata updates for columns not yet in the Supabase schema.
+                # Training must not fail because of a missing analytics column.
+                logger.warning(f"[{study_id[:8]}] metadata update skipped ({list(kwargs.keys())}): {_ue}")
         else:
             jobs[study_id].update(kwargs)
 
@@ -1371,8 +1376,11 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
 
             logger.info(f"[ROUND {rnd:02d}/{num_rounds}] {study_id[:8]} starting…")
             log(f"Round {rnd}/{num_rounds} — starting")
-            if store: store.set_round(study_id, rnd)
-            else: jobs[study_id]["current_round"] = rnd
+            if store:
+                try: store.set_round(study_id, rnd)
+                except Exception as _e: logger.warning(f"[{study_id[:8]}] set_round failed: {_e}")
+            else:
+                jobs[study_id]["current_round"] = rnd
 
             # Snapshot global model state for DP update clipping (all nodes share the same global weights)
             if dp_noise_multiplier:
@@ -1872,7 +1880,8 @@ async def create_study(
         jobs[study_id]["queue_position"] = queue_position
         _enqueue_study(study_id)
         if store:
-            store.update(study_id, status="queued", queue_position=queue_position)
+            try: store.update(study_id, status="queued", queue_position=queue_position)
+            except Exception: store.update(study_id, status="queued")
         logger.info(f"[queue] Study {study_id[:8]} queued at position {queue_position}")
     else:
         _launch_training_now()
