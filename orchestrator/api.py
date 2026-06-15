@@ -881,7 +881,7 @@ def _require_admin(authorization: Optional[str]):
 
 
 # ── Universal data loader ─────────────────────────────────────────────────────
-def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id: int, num_partitions: int, img_size: int = 28):
+def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id: int, num_partitions: int, img_size: int = 28, max_samples: int = None):
     import torch
     from torch.utils.data import DataLoader, TensorDataset, Subset, random_split
     import numpy as np
@@ -908,7 +908,8 @@ def detect_and_load(upload_path: Optional[Path], dataset_name: str, partition_id
             tf = transforms.Compose([transforms.Resize((img_size, img_size)), transforms.ToTensor(), transforms.Normalize([0.5]*in_ch, [0.5]*in_ch)])
             train_ds = DataClass(split="train", transform=tf, download=True, root=str(UPLOADS_DIR))
             test_ds  = DataClass(split="test",  transform=tf, download=True, root=str(UPLOADS_DIR))
-            n = min(len(train_ds) // num_partitions, MAX_SAMPLES_PER_PARTITION)
+            _cap = max_samples if max_samples is not None else MAX_SAMPLES_PER_PARTITION
+            n = min(len(train_ds) // num_partitions, _cap)
             train_ds = Subset(train_ds, list(range(partition_id*n, min((partition_id+1)*n, len(train_ds)))))
             desc = f"{cls_name}: {len(train_ds)} train / {len(test_ds)} test · {n_cls} classes"
             return (DataLoader(train_ds,32,shuffle=True,num_workers=0),
@@ -1315,14 +1316,19 @@ def train_thread(study_id, upload_path, dataset_name, num_rounds, local_epochs, 
         device = torch.device("cpu")
 
         _LARGE_INPUT_ARCHS = {"densenet121", "convnext_tiny", "swin_t", "efficientnet_v2_s"}
-        img_size = 64 if arch in _LARGE_INPUT_ARCHS else 28
+        # 32×32 is the minimum safe size for all deep archs (transition layers shrink to 1×1).
+        # Using 32 instead of 64 gives 4× fewer pixels per batch — critical on Railway CPU.
+        img_size = 32 if arch in _LARGE_INPUT_ARCHS else 28
+        # Reduce sample cap for compute-heavy models so each round stays < ~10 min on CPU
+        heavy_sample_cap = 1500
+        effective_sample_cap = heavy_sample_cap if arch in _LARGE_INPUT_ARCHS else MAX_SAMPLES_PER_PARTITION
         if arch in _LARGE_INPUT_ARCHS:
-            log(f"🖼️  Resizing inputs to {img_size}×{img_size} for {arch} (requires deeper spatial resolution)")
+            log(f"🖼️  Using {img_size}×{img_size} inputs + {effective_sample_cap} samples/node for {arch} (CPU-efficient mode)")
 
         node_loaders = []
         for i in range(num_nodes):
             tl, vl, num_classes, in_ch, desc, class_names = detect_and_load(
-                upload_path, dataset_name, i, num_nodes, img_size=img_size)
+                upload_path, dataset_name, i, num_nodes, img_size=img_size, max_samples=effective_sample_cap)
             node_loaders.append((tl, vl))
             if i == 0:
                 log(f"Dataset: {desc}")
@@ -2095,7 +2101,7 @@ def download_model(study_id: str, format: str = Query("pt"), authorization: Opti
         model.load_state_dict(state_dict, strict=False)
         model.eval()
 
-        _onnx_size = 64 if arch in {"densenet121", "convnext_tiny", "swin_t", "efficientnet_v2_s"} else 28
+        _onnx_size = 32 if arch in {"densenet121", "convnext_tiny", "swin_t", "efficientnet_v2_s"} else 28
         dummy = torch.zeros(1, in_ch, _onnx_size, _onnx_size)
         onnx_buf = _io2.BytesIO()
         torch.onnx.export(model, dummy, onnx_buf, opset_version=17,
