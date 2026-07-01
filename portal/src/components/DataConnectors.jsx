@@ -22,6 +22,8 @@ const S = {
 function ConnectorBadge({ type }) {
   const cfg = type === 'redcap'
     ? { label: 'REDCap', color: '#7C3AED' }
+    : type === 'openneuro'
+    ? { label: 'OpenNeuro', color: '#059669' }
     : { label: 'OMOP CDM', color: '#0EA5E9' };
   return <span style={S.tag(cfg.color)}>{cfg.label}</span>;
 }
@@ -364,12 +366,206 @@ function OMOPWizard({ session, onSaved, onCancel }) {
   );
 }
 
+// ── OpenNeuro Wizard ──────────────────────────────────────────────────────────
+
+const MODALITY_OPTIONS = ['', 'MRI', 'fMRI', 'EEG', 'MEG', 'PET'];
+
+function OpenNeuroWizard({ session, onSaved, onCancel }) {
+  const [query,       setQuery]      = useState('');
+  const [modality,    setModality]   = useState('');
+  const [searching,   setSearching]  = useState(false);
+  const [datasets,    setDatasets]   = useState([]);
+  const [selected,    setSelected]   = useState(null);  // dataset object
+  const [panel,       setPanel]      = useState(null);  // 'files' | 'participants'
+  const [panelData,   setPanelData]  = useState(null);
+  const [panelLoading,setPanelLoading] = useState(false);
+  const [saving,      setSaving]     = useState(null);  // dataset_id being saved
+  const [saved,       setSaved]      = useState({});    // dataset_id -> true
+  const [err,         setErr]        = useState('');
+
+  const authH = { Authorization: `Bearer ${session?.access_token}` };
+
+  const doSearch = async () => {
+    setSearching(true); setErr(''); setDatasets([]); setSelected(null); setPanel(null);
+    try {
+      const params = new URLSearchParams({ q: query, modality });
+      const r = await fetch(`${API}/integrations/openneuro/search?${params}`, { headers: authH });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.detail || 'Search failed'); return; }
+      setDatasets(d.datasets || []);
+    } catch (e) { setErr(e.message); }
+    finally { setSearching(false); }
+  };
+
+  const loadFiles = async (ds) => {
+    setSelected(ds); setPanel('files'); setPanelData(null); setPanelLoading(true);
+    try {
+      const r = await fetch(`${API}/integrations/openneuro/dataset/${ds.id}/files?version=${ds.version}`, { headers: authH });
+      const d = await r.json();
+      setPanelData(d.files || []);
+    } catch (e) { setPanelData([]); }
+    finally { setPanelLoading(false); }
+  };
+
+  const loadParticipants = async (ds) => {
+    setSelected(ds); setPanel('participants'); setPanelData(null); setPanelLoading(true);
+    try {
+      const r = await fetch(`${API}/integrations/openneuro/dataset/${ds.id}/participants?version=${ds.version}`, { headers: authH });
+      const d = await r.json();
+      setPanelData(d.participants || []);
+    } catch (e) { setPanelData([]); }
+    finally { setPanelLoading(false); }
+  };
+
+  const useForStudy = async (ds) => {
+    setSaving(ds.id);
+    try {
+      const r = await fetch(`${API}/integrations/openneuro/save`, {
+        method: 'POST',
+        headers: { ...authH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: ds.id, dataset_name: ds.name, version: ds.version }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.detail || 'Save failed'); return; }
+      setSaved(prev => ({ ...prev, [ds.id]: true }));
+      onSaved && onSaved(d);
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(null); }
+  };
+
+  const fmtBytes = (b) => {
+    if (!b) return '—';
+    if (b > 1e9) return (b / 1e9).toFixed(1) + ' GB';
+    if (b > 1e6) return (b / 1e6).toFixed(1) + ' MB';
+    return (b / 1e3).toFixed(0) + ' KB';
+  };
+
+  const panelHeaders = panelData && panelData.length > 0 ? Object.keys(panelData[0]) : [];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <ConnectorBadge type="openneuro"/>
+        <span style={{ fontWeight: 700, fontSize: 16, color: '#1D1D1F' }}>Browse OpenNeuro</span>
+      </div>
+
+      <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#166534', marginBottom: 16 }}>
+        OpenNeuro datasets are publicly available under open-access licences.
+        Each dataset can be used as a real-world neuroimaging partition in your federated study —
+        no download required for metadata-only FL experiments.
+      </div>
+
+      {/* Search bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <input
+          style={{ ...S.input, flex: 2, minWidth: 180 }}
+          placeholder="Search datasets (e.g. Alzheimer, autism, stroke)…"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && doSearch()}
+        />
+        <select style={{ ...S.input, flex: '0 0 120px' }} value={modality} onChange={e => setModality(e.target.value)}>
+          {MODALITY_OPTIONS.map(m => <option key={m} value={m}>{m || 'All modalities'}</option>)}
+        </select>
+        <button style={S.btnPrimary} onClick={doSearch} disabled={searching}>
+          {searching ? 'Searching…' : 'Search'}
+        </button>
+        <button style={S.btnSecondary} onClick={onCancel}>Cancel</button>
+      </div>
+
+      {err && <div style={S.error}>{err}</div>}
+
+      {/* Results table */}
+      {datasets.length > 0 && (
+        <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: '#F9FAFB' }}>
+                {['Dataset', 'ID', 'Modalities', 'Subjects', 'Downloads', 'Size', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#374151', borderBottom: '1.5px solid #E5E7EB', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {datasets.map(ds => (
+                <tr key={ds.id} style={{ borderBottom: '1px solid #F3F4F6', background: selected?.id === ds.id ? '#F0FDF4' : 'transparent' }}>
+                  <td style={{ padding: '8px 10px', fontWeight: 500, color: '#1D1D1F', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ds.name}>{ds.name}</td>
+                  <td style={{ padding: '8px 10px', color: '#6B7280', fontFamily: 'monospace' }}>{ds.id}</td>
+                  <td style={{ padding: '8px 10px', color: '#374151' }}>{(ds.modalities || []).join(', ') || '—'}</td>
+                  <td style={{ padding: '8px 10px', color: '#374151', textAlign: 'right' }}>{ds.subjects ?? '—'}</td>
+                  <td style={{ padding: '8px 10px', color: '#374151', textAlign: 'right' }}>{ds.downloads ?? '—'}</td>
+                  <td style={{ padding: '8px 10px', color: '#374151' }}>{fmtBytes(ds.size_bytes)}</td>
+                  <td style={{ padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'nowrap' }}>
+                      <button style={{ ...S.btnSecondary, padding: '4px 10px', fontSize: 11 }} onClick={() => loadFiles(ds)}>Files</button>
+                      <button style={{ ...S.btnSecondary, padding: '4px 10px', fontSize: 11 }} onClick={() => loadParticipants(ds)}>Participants</button>
+                      <button
+                        style={{ ...S.btnPrimary, padding: '4px 10px', fontSize: 11, background: saved[ds.id] ? '#059669' : '#007AFF' }}
+                        onClick={() => useForStudy(ds)}
+                        disabled={!!saving || saved[ds.id]}
+                      >
+                        {saved[ds.id] ? 'Saved' : saving === ds.id ? '…' : 'Use for study'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {datasets.length === 0 && !searching && query && !err && (
+        <div style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>No datasets found. Try a different query or modality.</div>
+      )}
+
+      {/* Detail panel */}
+      {selected && panel && (
+        <div style={{ border: '1.5px solid #E5E7EB', borderRadius: 10, padding: '14px 16px', marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, color: '#1D1D1F' }}>
+              {panel === 'files' ? 'Files' : 'Participants'} — <span style={{ fontFamily: 'monospace', fontWeight: 400 }}>{selected.id}</span>
+            </div>
+            <button style={{ ...S.btnSecondary, padding: '3px 10px', fontSize: 11 }} onClick={() => { setPanel(null); setPanelData(null); }}>Close</button>
+          </div>
+          {panelLoading && <div style={{ color: '#9CA3AF', fontSize: 12 }}>Loading…</div>}
+          {!panelLoading && panelData && panelData.length === 0 && (
+            <div style={{ color: '#9CA3AF', fontSize: 12 }}>No data found.</div>
+          )}
+          {!panelLoading && panelData && panelData.length > 0 && (
+            <div style={{ overflowX: 'auto', maxHeight: 280, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ background: '#F9FAFB', position: 'sticky', top: 0 }}>
+                    {panelHeaders.map(h => (
+                      <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, color: '#374151', borderBottom: '1.5px solid #E5E7EB', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {panelData.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                      {panelHeaders.map(h => (
+                        <td key={h} style={{ padding: '5px 8px', color: '#374151', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={String(row[h] ?? '')}>{row[h] ?? ''}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function DataConnectors({ session }) {
   const [connections, setConnections] = useState([]);
   const [loading,     setLoading]     = useState(true);
-  const [wizard,      setWizard]      = useState(null);  // 'redcap' | 'omop' | null
+  const [wizard,      setWizard]      = useState(null);  // 'redcap' | 'omop' | 'openneuro' | null
   const [deleting,    setDeleting]    = useState(null);
 
   const authH = { Authorization: `Bearer ${session?.access_token}` };
@@ -397,8 +593,9 @@ export default function DataConnectors({ session }) {
     return (
       <div style={S.wrap}>
         <div style={S.card}>
-          {wizard === 'redcap' && <REDCapWizard session={session} onSaved={handleSaved} onCancel={() => setWizard(null)}/>}
-          {wizard === 'omop'   && <OMOPWizard   session={session} onSaved={handleSaved} onCancel={() => setWizard(null)}/>}
+          {wizard === 'redcap'      && <REDCapWizard     session={session} onSaved={handleSaved} onCancel={() => setWizard(null)}/>}
+          {wizard === 'omop'        && <OMOPWizard       session={session} onSaved={handleSaved} onCancel={() => setWizard(null)}/>}
+          {wizard === 'openneuro'   && <OpenNeuroWizard  session={session} onSaved={handleSaved} onCancel={() => setWizard(null)}/>}
         </div>
       </div>
     );
@@ -414,7 +611,7 @@ export default function DataConnectors({ session }) {
             <div style={S.h1}>Data Connectors</div>
           </div>
           <div style={S.sub}>
-            Connect your REDCap project or OMOP CDM database to use existing institutional data for FL studies — no migration required.
+            Connect your REDCap project, OMOP CDM database, or browse OpenNeuro public neuroimaging datasets for FL studies — no migration required.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -424,6 +621,9 @@ export default function DataConnectors({ session }) {
           <button style={{ ...S.btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setWizard('omop')}>
             <span style={{ fontWeight: 700, color: '#0EA5E9' }}>OMOP CDM</span>
           </button>
+          <button style={{ ...S.btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setWizard('openneuro')}>
+            <span style={{ fontWeight: 700, color: '#059669' }}>OpenNeuro</span>
+          </button>
         </div>
       </div>
 
@@ -432,6 +632,7 @@ export default function DataConnectors({ session }) {
         {[
           { icon: '🔗', title: 'REDCap', desc: 'Connect via API token. Map fields to features + label. Export for FL training.' },
           { icon: '🗄️', title: 'OMOP CDM', desc: 'Upload condition, measurement & person CSV exports. Choose clinical scenario. Auto-build feature matrix.' },
+          { icon: '🧠', title: 'OpenNeuro', desc: 'Browse 1,000+ public neuroimaging datasets. Each dataset becomes a simulated FL partition — no raw scan download needed for metadata studies.' },
           { icon: '🚀', title: 'Launch', desc: 'Imported datasets appear in the Launch form as selectable data sources.' },
         ].map(c => (
           <div key={c.title} style={{ flex: '1 1 200px', background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 12, padding: '14px 16px' }}>
@@ -456,11 +657,12 @@ export default function DataConnectors({ session }) {
                 <div style={{ fontSize: 36, marginBottom: 10 }}>🔌</div>
                 <div style={{ fontWeight: 600, color: '#6B7280', marginBottom: 6 }}>No connections yet</div>
                 <div style={{ fontSize: 12, marginBottom: 16 }}>
-                  Connect REDCap or OMOP CDM to use your institutional data for federated learning.
+                  Connect REDCap or OMOP CDM, or browse OpenNeuro public datasets for federated learning.
                 </div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
                   <button style={S.btnPrimary} onClick={() => setWizard('redcap')}>Connect REDCap</button>
                   <button style={S.btnSecondary} onClick={() => setWizard('omop')}>Connect OMOP</button>
+                  <button style={{ ...S.btnSecondary, color: '#059669', fontWeight: 600 }} onClick={() => setWizard('openneuro')}>Browse OpenNeuro</button>
                 </div>
               </div>
             )
@@ -468,8 +670,8 @@ export default function DataConnectors({ session }) {
               const cfg = c.config || {};
               return (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 0', borderBottom: '1px solid #F3F4F6' }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 10, background: c.connection_type === 'redcap' ? '#F3E8FF' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-                    {c.connection_type === 'redcap' ? '🔗' : '🗄️'}
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: c.connection_type === 'redcap' ? '#F3E8FF' : c.connection_type === 'openneuro' ? '#ECFDF5' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
+                    {c.connection_type === 'redcap' ? '🔗' : c.connection_type === 'openneuro' ? '🧠' : '🗄️'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
@@ -478,9 +680,10 @@ export default function DataConnectors({ session }) {
                       <span style={S.tag(c.status === 'active' ? '#10B981' : '#EF4444')}>{c.status}</span>
                     </div>
                     <div style={{ fontSize: 12, color: '#6E6E73' }}>
-                      {c.connection_type === 'redcap' && cfg.url && <>{cfg.url}</>}
-                      {c.connection_type === 'omop'   && cfg.scenario && <>Scenario: {cfg.scenario} · Tables: {cfg.tables_uploaded?.join(', ')}</>}
-                      {cfg.dataset_id && <> · Dataset: <code style={{ fontSize: 11 }}>{cfg.dataset_id?.slice(0,8)}</code></>}
+                      {c.connection_type === 'redcap'      && cfg.url && <>{cfg.url}</>}
+                      {c.connection_type === 'omop'        && cfg.scenario && <>Scenario: {cfg.scenario} · Tables: {cfg.tables_uploaded?.join(', ')}</>}
+                      {c.connection_type === 'openneuro'   && cfg.dataset_id && <>OpenNeuro: <code style={{ fontSize: 11 }}>{cfg.dataset_id}</code>{cfg.version && <> · v{cfg.version}</>}</>}
+                      {c.connection_type !== 'openneuro' && cfg.dataset_id && <> · Dataset: <code style={{ fontSize: 11 }}>{cfg.dataset_id?.slice(0,8)}</code></>}
                     </div>
                     <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
                       Created {new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -495,10 +698,11 @@ export default function DataConnectors({ session }) {
         }
       </div>
 
-      {/* OMOP note */}
+      {/* Footer note */}
       <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 8, lineHeight: 1.6 }}>
         <strong>OMOP CDM v5 supported.</strong> Compatible with EHDEN, NHS Secure Data Environments, and any institution using the OHDSI tools stack.
         REDCap connector tested against REDCap 12+. Your API token is used only for the import — it is not stored in plain text after connection.
+        <strong> OpenNeuro</strong> datasets are publicly available under open data licences; raw scans are not downloaded by the platform.
       </div>
     </div>
   );

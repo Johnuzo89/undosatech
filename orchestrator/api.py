@@ -3235,3 +3235,75 @@ async def omop_import(
     })
     return {**result, "dataset_id": dataset_id, "connection_id": conn["id"],
             "dataset_name": name, "file": str(output_path)}
+
+
+# ── OpenNeuro integration ─────────────────────────────────────────────────────
+
+@app.get("/integrations/openneuro/search")
+async def openneuro_search(
+    q: str = "",
+    modality: str = "",
+    authorization: Optional[str] = Header(None),
+):
+    _require_user(authorization)
+    from orchestrator.openneuro_connector import search_datasets
+    results = search_datasets(query=q, modality=modality, limit=20)
+    return {"datasets": results}
+
+
+@app.get("/integrations/openneuro/dataset/{dataset_id}/files")
+async def openneuro_dataset_files(
+    dataset_id: str,
+    version: str = "latest",
+    authorization: Optional[str] = Header(None),
+):
+    _require_user(authorization)
+    from orchestrator.openneuro_connector import get_dataset_files
+    files = get_dataset_files(dataset_id, version)
+    return {"dataset_id": dataset_id, "version": version, "files": files[:100]}
+
+
+@app.get("/integrations/openneuro/dataset/{dataset_id}/participants")
+async def openneuro_participants(
+    dataset_id: str,
+    version: str = "latest",
+    authorization: Optional[str] = Header(None),
+):
+    _require_user(authorization)
+    from orchestrator.openneuro_connector import download_participant_tsv
+    tsv = download_participant_tsv(dataset_id, version)
+    if not tsv:
+        raise HTTPException(404, "participants.tsv not found")
+    rows = [line.split("\t") for line in tsv.strip().split("\n")]
+    headers = rows[0] if rows else []
+    data = [dict(zip(headers, r)) for r in rows[1:]]
+    return {"participants": data, "count": len(data)}
+
+
+@app.post("/integrations/openneuro/save")
+async def openneuro_save_connection(
+    body: dict = Body(...),
+    authorization: Optional[str] = Header(None),
+):
+    """Save an OpenNeuro dataset as a connected data source for a study."""
+    user = _require_user(authorization)
+    dataset_id = body.get("dataset_id", "")
+    dataset_name = body.get("dataset_name", dataset_id)
+    version = body.get("version", "latest")
+    study_id = body.get("study_id")
+    if not dataset_id:
+        raise HTTPException(400, "dataset_id required")
+    record = {
+        "user_id": str(user.id),
+        "connection_type": "openneuro",
+        "name": dataset_name,
+        "config": {"dataset_id": dataset_id, "dataset_name": dataset_name, "version": version},
+        "study_id": study_id,
+        "status": "connected",
+    }
+    if supabase_admin:
+        try:
+            supabase_admin.table("data_connections").insert(record).execute()
+        except Exception as e:
+            logger.warning(f"openneuro save failed: {e}")
+    return {"status": "connected", "dataset_id": dataset_id}
