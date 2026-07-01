@@ -954,7 +954,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
       const terminal=job&&(job.status==='completed'||job.status==='cancelled'||job.status==='failed'||job.status==='stopped')
       if(terminal){if(!job.rounds?.length)poll();return}
       poll()
-    },2000)
+    },4000)
     return()=>clearInterval(id)
   },[studyId])
   const rounds = (job?.round_results?.length ? job.round_results : null) || job?.rounds || []
@@ -1238,7 +1238,7 @@ export default function App() {
   },[session])
 
   useEffect(()=>{ if(user) refresh() },[user])
-  useEffect(()=>{ const id=setInterval(()=>{ if(user) refresh() },3000); return()=>clearInterval(id) },[user,refresh])
+  useEffect(()=>{ const id=setInterval(()=>{ if(user) refresh() },6000); return()=>clearInterval(id) },[user,refresh])
 
   const signOut = async()=>{ await supabase.auth.signOut(); setSession(null); setUser(null) }
 
