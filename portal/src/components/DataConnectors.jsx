@@ -389,11 +389,20 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
     setSearching(true); setErr(''); setDatasets([]); setSelected(null); setPanel(null);
     try {
       const params = new URLSearchParams({ q: query, modality });
-      const r = await fetch(`${API}/integrations/openneuro/search?${params}`, { headers: authH });
+      const r = await fetch(`${API}/integrations/openneuro/search?${params}`, {
+        headers: authH,
+        signal: AbortSignal.timeout(60000),
+      });
       const d = await r.json();
       if (!r.ok) { setErr(d.detail || 'Search failed'); return; }
       setDatasets(d.datasets || []);
-    } catch (e) { setErr(e.message); }
+    } catch (e) {
+      if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+        setErr('Search timed out — catalog is still warming up. Please try again in a moment.');
+      } else {
+        setErr(e.message);
+      }
+    }
     finally { setSearching(false); }
   };
 
@@ -451,8 +460,9 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
 
       <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#166534', marginBottom: 16 }}>
         OpenNeuro datasets are publicly available under open-access licences.
-        Each dataset can be used as a real-world neuroimaging partition in your federated study —
-        no download required for metadata-only FL experiments.
+        Search by disease (e.g. <strong>Alzheimer</strong>, <strong>epilepsy</strong>, <strong>depression</strong>), study name, or dataset ID.
+        Each dataset becomes a real-world neuroimaging FL partition — no raw scan download required for metadata studies.
+        {' '}<em>First search per modality warms the catalog (~15–25s); subsequent searches are instant.</em>
       </div>
 
       {/* Search bar */}
@@ -481,7 +491,7 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#F9FAFB' }}>
-                {['Dataset', 'ID', 'Modalities', 'Subjects', 'Downloads', 'Size', 'Actions'].map(h => (
+                {['Dataset', 'ID', 'Disease/Condition', 'Modalities', 'Subjects', 'Downloads', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#374151', borderBottom: '1.5px solid #E5E7EB', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -491,10 +501,14 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
                 <tr key={ds.id} style={{ borderBottom: '1px solid #F3F4F6', background: selected?.id === ds.id ? '#F0FDF4' : 'transparent' }}>
                   <td style={{ padding: '8px 10px', fontWeight: 500, color: '#1D1D1F', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ds.name}>{ds.name}</td>
                   <td style={{ padding: '8px 10px', color: '#6B7280', fontFamily: 'monospace' }}>{ds.id}</td>
+                  <td style={{ padding: '8px 10px' }}>
+                    {ds.dx_status
+                      ? <span style={{ background: '#ECFDF5', color: '#059669', borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600 }}>{ds.dx_status}</span>
+                      : <span style={{ color: '#9CA3AF', fontSize: 11 }}>—</span>}
+                  </td>
                   <td style={{ padding: '8px 10px', color: '#374151' }}>{(ds.modalities || []).join(', ') || '—'}</td>
                   <td style={{ padding: '8px 10px', color: '#374151', textAlign: 'right' }}>{ds.subjects ?? '—'}</td>
-                  <td style={{ padding: '8px 10px', color: '#374151', textAlign: 'right' }}>{ds.downloads ?? '—'}</td>
-                  <td style={{ padding: '8px 10px', color: '#374151' }}>{fmtBytes(ds.size_bytes)}</td>
+                  <td style={{ padding: '8px 10px', color: '#374151', textAlign: 'right' }}>{(ds.downloads ?? 0).toLocaleString()}</td>
                   <td style={{ padding: '8px 10px' }}>
                     <div style={{ display: 'flex', gap: 5, flexWrap: 'nowrap' }}>
                       <button style={{ ...S.btnSecondary, padding: '4px 10px', fontSize: 11 }} onClick={() => loadFiles(ds)}>Files</button>
@@ -515,8 +529,14 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
         </div>
       )}
 
+      {searching && (
+        <div style={{ color: '#6B7280', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
+          Searching OpenNeuro catalog… <span style={{ color: '#9CA3AF' }}>(first search per modality may take up to 25s while the catalog loads)</span>
+        </div>
+      )}
+
       {datasets.length === 0 && !searching && query && !err && (
-        <div style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>No datasets found. Try a different query or modality.</div>
+        <div style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>No datasets found. Try a broader term (e.g. "alzheimer" without modality filter) or wait a moment for the catalog to finish loading.</div>
       )}
 
       {/* Detail panel */}

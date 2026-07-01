@@ -292,8 +292,8 @@ async def openneuro_search(
 ):
     _require_user(authorization)
     from orchestrator.openneuro_connector import search_datasets
-    results = search_datasets(query=q, modality=modality, limit=20)
-    return {"datasets": results}
+    results = search_datasets(query=q, modality=modality, limit=30)
+    return {"datasets": results, "count": len(results)}
 
 
 @router.get("/integrations/openneuro/dataset/{dataset_id}/files")

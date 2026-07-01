@@ -340,6 +340,14 @@ async def lifespan(app):
         except Exception as e:
             logger.warning(f"Crash recovery failed: {e}")
     _node_monitor_loop()
+    # Pre-warm OpenNeuro catalog cache for the most common modalities
+    # so the first user search is instant rather than taking 25s
+    try:
+        from orchestrator.openneuro_connector import warm_cache_background
+        warm_cache_background("MRI", "EEG", "")
+        logger.info("OpenNeuro cache warming started in background")
+    except Exception as _e:
+        logger.warning(f"OpenNeuro cache warm-up skipped: {_e}")
     yield
 
 
