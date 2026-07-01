@@ -344,7 +344,7 @@ async def lifespan(app):
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
-app = FastAPI(title="UndosaTech API", version="6.0.0", lifespan=lifespan)
+app = FastAPI(title="UndosaTech API", version="7.0.0", lifespan=lifespan)
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://app.undosatech.com").split(",")
 app.add_middleware(
@@ -368,7 +368,7 @@ app.include_router(integrations_router)
 def health():
     active = [sid[:8] for sid, j in jobs.items() if j.get("status") == "running"]
     resp   = {
-        "status": "ok", "version": "6.0.0",
+        "status": "ok", "version": "7.0.0",
         "storage": "supabase" if store else "in-memory",
         "active_studies": len(active),
         "active_study_ids": active,
