@@ -358,7 +358,7 @@ async def openneuro_save_connection(
 # ── /datasets/connected ───────────────────────────────────────────────────────
 @router.get("/datasets/connected")
 async def list_connected_datasets(authorization: Optional[str] = Header(None)):
-    """Return datasets imported via REDCap/OMOP connectors that have an associated file."""
+    """Return all saved data connections available for FL training."""
     user  = _require_user(authorization)
     conns = _list_connections(str(user.id))
     result = []
@@ -370,13 +370,33 @@ async def list_connected_datasets(authorization: Optional[str] = Header(None)):
             except Exception as e:
                 logger.warning(f"Failed to parse connection config JSON: {e}")
                 cfg = {}
-        dataset_id = cfg.get("dataset_id")
-        if dataset_id and (UPLOADS_DIR / f"{dataset_id}.csv").exists():
-            result.append({
-                "id":              dataset_id,
-                "name":            c.get("name", "Connected Dataset"),
-                "connection_type": c.get("connection_type", "unknown"),
-                "connection_id":   c.get("id"),
-                "created_at":      c.get("created_at"),
-            })
+        conn_type = c.get("connection_type", "unknown")
+
+        if conn_type == "openneuro":
+            # OpenNeuro datasets stream from the public API — no local file needed
+            on_id   = cfg.get("dataset_id", "")
+            on_name = cfg.get("dataset_name") or on_id
+            if on_id:
+                result.append({
+                    "id":              f"openneuro:{on_id}",
+                    "name":            on_name,
+                    "connection_type": "openneuro",
+                    "connection_id":   c.get("id"),
+                    "openneuro_id":    on_id,
+                    "version":         cfg.get("version", "latest"),
+                    "ready":           True,
+                    "created_at":      c.get("created_at"),
+                })
+        else:
+            # REDCap / OMOP — require a locally-imported CSV file
+            dataset_id = cfg.get("dataset_id")
+            if dataset_id and (UPLOADS_DIR / f"{dataset_id}.csv").exists():
+                result.append({
+                    "id":              dataset_id,
+                    "name":            c.get("name", "Connected Dataset"),
+                    "connection_type": conn_type,
+                    "connection_id":   c.get("id"),
+                    "ready":           True,
+                    "created_at":      c.get("created_at"),
+                })
     return result

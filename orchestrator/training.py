@@ -43,6 +43,11 @@ def detect_and_load(
         "organamnist":    ("OrganAMNIST",   1, 11, ["Bladder","Femur-L","Femur-R","Heart","Kidney-L","Kidney-R","Liver","Lung-L","Lung-R","Pancreas","Spleen"]),
     }
 
+    # ── OpenNeuro dataset (participants.tsv tabular classification) ──────────
+    if dataset_name.startswith("openneuro:"):
+        on_id = dataset_name.split(":", 1)[1]
+        return _load_openneuro_tabular(on_id, partition_id, num_partitions, max_samples)
+
     if dataset_name.lower() in medmnist_map:
         cls_name, in_ch, n_cls, class_names = medmnist_map[dataset_name.lower()]
         try:
@@ -210,6 +215,120 @@ def detect_and_load(
         DataLoader(train_ds, 32, shuffle=True,  num_workers=0),
         DataLoader(test_ds,  32, shuffle=False, num_workers=0),
         4, 1, "Synthetic demo: 2000 samples · 4 classes", ["Class A", "Class B", "Class C", "Class D"],
+    )
+
+
+# ── OpenNeuro tabular loader ──────────────────────────────────────────────────
+def _load_openneuro_tabular(on_id: str, partition_id: int, num_partitions: int, max_samples=None):
+    """
+    Load an OpenNeuro dataset for FL training by downloading participants.tsv
+    and building a tabular classification task:
+      - Features: age, sex (encoded), plus any other numeric columns
+      - Label: dxStatus if present, otherwise last column
+    Each FL node receives a disjoint subset of subjects.
+    """
+    import torch, numpy as np
+    from torch.utils.data import DataLoader, TensorDataset, random_split
+    from orchestrator.openneuro_connector import download_participant_tsv, _resolve_latest_tag
+
+    tag = _resolve_latest_tag(on_id) or "latest"
+    tsv = download_participant_tsv(on_id, tag)
+    if not tsv:
+        raise ValueError(f"OpenNeuro {on_id}: participants.tsv not found (version={tag})")
+
+    rows = [line.split("\t") for line in tsv.strip().split("\n") if line]
+    if len(rows) < 2:
+        raise ValueError(f"OpenNeuro {on_id}: participants.tsv has no data rows")
+    headers = [h.strip() for h in rows[0]]
+    data_rows = [dict(zip(headers, r)) for r in rows[1:]]
+
+    # Determine label column: prefer dxStatus / diagnosis / group / site / label
+    label_col = None
+    for candidate in ["dxStatus", "diagnosis", "group", "condition", "label", "dx"]:
+        if candidate in headers:
+            label_col = candidate
+            break
+    if label_col is None:
+        label_col = headers[-1]
+
+    # Build feature matrix from numeric + sex columns; skip ID and label
+    feature_cols = []
+    for h in headers:
+        if h in ("participant_id", label_col):
+            continue
+        feature_cols.append(h)
+
+    def encode_row(row):
+        feats = []
+        for h in feature_cols:
+            v = row.get(h, "").strip()
+            if v.lower() in ("m", "male"):
+                feats.append(0.0)
+            elif v.lower() in ("f", "female"):
+                feats.append(1.0)
+            else:
+                try:
+                    feats.append(float(v))
+                except ValueError:
+                    feats.append(0.0)
+        return feats
+
+    labels_raw = [r.get(label_col, "").strip() for r in data_rows]
+    classes = sorted(set(l for l in labels_raw if l))
+    if not classes:
+        raise ValueError(f"OpenNeuro {on_id}: label column '{label_col}' has no values")
+    label_map = {c: i for i, c in enumerate(classes)}
+    # Keep only rows with a known label
+    valid = [(encode_row(r), label_map[r.get(label_col, "").strip()])
+             for r in data_rows if r.get(label_col, "").strip() in label_map]
+    if not valid:
+        raise ValueError(f"OpenNeuro {on_id}: no rows with valid labels in '{label_col}'")
+
+    X_all = np.array([v[0] for v in valid], dtype="float32")
+    y_all = np.array([v[1] for v in valid], dtype="int64")
+
+    # Normalise features
+    mu = X_all.mean(0); sd = X_all.std(0) + 1e-8
+    X_all = (X_all - mu) / sd
+
+    # Partition: each FL node gets a disjoint slice of subjects
+    n_total = len(X_all)
+    cap = min(n_total // num_partitions, max_samples or n_total)
+    start = partition_id * cap
+    end   = min(start + cap, n_total)
+    X_p   = X_all[start:end]
+    y_p   = y_all[start:end]
+
+    if len(X_p) < 4:
+        # fallback: use all data if partition is too small
+        X_p, y_p = X_all, y_all
+
+    n_feat = X_p.shape[1]
+    # Reshape to (N, 1, side, side) so existing conv models can consume it
+    import math
+    side = max(1, math.ceil(n_feat ** 0.5))
+    pad  = side * side - n_feat
+    if pad > 0:
+        X_p = np.pad(X_p, ((0, 0), (0, pad)))
+    X_t = torch.FloatTensor(X_p).reshape(-1, 1, side, side)
+    y_t = torch.LongTensor(y_p)
+
+    ds = TensorDataset(X_t, y_t)
+    n_train = max(1, int(len(ds) * 0.8))
+    n_test  = len(ds) - n_train
+    train_ds, test_ds = random_split(ds, [n_train, n_test])
+
+    n_cls = len(classes)
+    desc  = (
+        f"OpenNeuro {on_id} · participants.tsv · "
+        f"{len(valid)} subjects · label={label_col} · {n_cls} classes · "
+        f"partition {partition_id+1}/{num_partitions}"
+    )
+    logger.info(f"OpenNeuro {on_id}: loaded {len(X_p)} subjects, {n_feat} features, {n_cls} classes ({classes})")
+    return (
+        DataLoader(train_ds, batch_size=min(32, n_train), shuffle=True,  num_workers=0),
+        DataLoader(test_ds,  batch_size=min(32, n_test or 1),  shuffle=False, num_workers=0),
+        n_cls, 1, desc, classes,
     )
 
 

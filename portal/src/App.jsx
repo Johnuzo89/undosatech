@@ -784,9 +784,18 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
           <optgroup label="Medical Imaging (MedMNIST)">
             {DATASETS.filter(d=>d.v!=='upload').map(d=><option key={d.v} value={d.v}>{d.l}</option>)}
           </optgroup>
-          {connectedDatasets.length>0&&(
+          {connectedDatasets.filter(d=>d.connection_type==='openneuro').length>0&&(
+            <optgroup label="OpenNeuro Neuroimaging Datasets">
+              {connectedDatasets.filter(d=>d.connection_type==='openneuro').map(d=>(
+                <option key={d.id} value={d.id}>{d.name} (OpenNeuro · {d.openneuro_id})</option>
+              ))}
+            </optgroup>
+          )}
+          {connectedDatasets.filter(d=>d.connection_type!=='openneuro').length>0&&(
             <optgroup label="Connected Datasets (REDCap / OMOP)">
-              {connectedDatasets.map(d=><option key={d.id} value={d.id}>{d.name} ({d.connection_type.toUpperCase()})</option>)}
+              {connectedDatasets.filter(d=>d.connection_type!=='openneuro').map(d=>(
+                <option key={d.id} value={d.id}>{d.name} ({d.connection_type.toUpperCase()})</option>
+              ))}
             </optgroup>
           )}
           <optgroup label="Upload Your Own">
