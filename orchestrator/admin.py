@@ -288,6 +288,43 @@ async def admin_delete_user(user_id: str, authorization: Optional[str] = Header(
         raise HTTPException(500, f"Failed to delete user: {e}")
 
 
+@router.get("/admin/hardware")
+async def admin_hardware(authorization: Optional[str] = Header(None)):
+    """Full hardware details — admin only."""
+    _require_admin(authorization)
+    import psutil, torch
+
+    cpu_count   = psutil.cpu_count(logical=True)
+    ram_total   = psutil.virtual_memory().total
+    ram_used    = psutil.virtual_memory().used
+    gpu_avail   = torch.cuda.is_available()
+    gpu_name    = torch.cuda.get_device_name(0) if gpu_avail else None
+    gpu_vram    = None
+    if gpu_avail:
+        try:
+            gpu_vram = torch.cuda.get_device_properties(0).total_memory
+        except Exception:
+            pass
+
+    all_studies   = store.list_all() if store else list(jobs.values())
+    gpu_queued_count = sum(1 for s in all_studies if s.get("status") == "gpu_queued")
+    running_count    = sum(1 for s in all_studies if s.get("status") == "running")
+
+    return {
+        "cpu": {"count": cpu_count},
+        "ram": {"total_bytes": ram_total, "used_bytes": ram_used},
+        "gpu": {
+            "available": gpu_avail,
+            "name": gpu_name,
+            "vram_bytes": gpu_vram,
+        },
+        "studies": {
+            "running":    running_count,
+            "gpu_queued": gpu_queued_count,
+        },
+    }
+
+
 @router.get("/admin/storage-debug")
 async def storage_debug(authorization: Optional[str] = Header(None)):
     """Diagnose Supabase Storage state."""

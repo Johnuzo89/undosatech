@@ -340,15 +340,56 @@ async def lifespan(app):
         except Exception as e:
             logger.warning(f"Crash recovery failed: {e}")
     _node_monitor_loop()
-    # Pre-warm OpenNeuro catalog cache for the most common modalities
-    # so the first user search is instant rather than taking 25s
     try:
         from orchestrator.openneuro_connector import warm_cache_background
         warm_cache_background("MRI", "EEG", "")
         logger.info("OpenNeuro cache warming started in background")
     except Exception as _e:
         logger.warning(f"OpenNeuro cache warm-up skipped: {_e}")
+    # Start GPU queue watcher — picks up gpu_queued studies when CUDA becomes available
+    threading.Thread(target=_gpu_queue_watcher, daemon=True, name="gpu-queue-watcher").start()
     yield
+
+
+def _gpu_queue_watcher():
+    """Background thread: when CUDA becomes available, start any gpu_queued studies."""
+    import torch
+    while True:
+        time.sleep(30)
+        try:
+            if not torch.cuda.is_available():
+                continue
+            queued = [s for s in (store.list_all() if store else list(jobs.values()))
+                      if s.get("status") == "gpu_queued"]
+            for study in queued:
+                sid = study.get("study_id") or study.get("id")
+                if not sid:
+                    continue
+                logger.info(f"[gpu-queue] CUDA now available — starting {sid[:8]}")
+                if store:
+                    store.set_running(sid)
+                    full = store.get(sid) or {}
+                else:
+                    full = jobs.get(sid, {})
+                    jobs[sid]["status"] = "running"
+                up_files = list(UPLOADS_DIR.glob(f"{sid}.*"))
+                threading.Thread(
+                    target=train_thread,
+                    args=(
+                        sid,
+                        up_files[0] if up_files else None,
+                        full.get("dataset", "octmnist"),
+                        int(full.get("num_rounds") or 5),
+                        int(full.get("local_epochs") or 2),
+                        full.get("model", "resnet18"),
+                        full.get("nodes") or [],
+                        full.get("dp_noise_multiplier"),
+                    ),
+                    kwargs={"compute_mode": "gpu"},
+                    daemon=True, name=f"train-gpu-{sid[:8]}",
+                ).start()
+        except Exception as e:
+            logger.warning(f"[gpu-queue] watcher error: {e}")
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -385,6 +426,18 @@ def health():
     return resp
 
 
+# ── Compute availability (user-facing — no infra details) ────────────────────
+@app.get("/compute/availability")
+def compute_availability(authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    import torch
+    gpu_available = torch.cuda.is_available()
+    return {
+        "gpu_available": gpu_available,
+        "gpu_name": torch.cuda.get_device_name(0) if gpu_available else None,
+    }
+
+
 # ── Studies ───────────────────────────────────────────────────────────────────
 @app.post("/studies", status_code=201)
 async def create_study(
@@ -401,6 +454,7 @@ async def create_study(
     class_descriptions:   Optional[str]   = Form(None),
     data_retention_days:  Optional[int]   = Form(None),
     ethics_ref:           Optional[str]   = Form(None),
+    compute_mode:         str             = Form("cpu"),
     file: Optional[UploadFile] = File(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -464,6 +518,7 @@ async def create_study(
             "dp_delta": 1e-5 if dp_noise_multiplier else None,
             "data_retention_days": data_retention_days or 90,
             "ethics_ref": ethics_ref or "[To be completed by institution]",
+            "compute_mode": compute_mode,
         }
     else:
         jobs[study_id] = {
@@ -480,6 +535,7 @@ async def create_study(
             "dp_delta": 1e-5 if dp_noise_multiplier else None,
             "data_retention_days": data_retention_days or 90,
             "ethics_ref": ethics_ref or "[To be completed by institution]",
+            "compute_mode": compute_mode,
         }
 
     # Auto-invite real registered nodes (skip simulated placeholders)
@@ -510,11 +566,12 @@ async def create_study(
                   if not any((n.get("node_id", "") if isinstance(n, dict) else str(n)).endswith(s)
                               for s in SIM_SUFFIXES)]
 
-    def _launch_training_now():
+    def _launch_training_now(mode: str = "cpu"):
         t = threading.Thread(
             target=train_thread,
             args=(study_id, upload_path, dataset, num_rounds, local_epochs,
                   architecture, nodes_config, dp_noise_multiplier),
+            kwargs={"compute_mode": mode},
             daemon=True, name=f"train-{study_id[:8]}",
         )
         t.start()
@@ -526,6 +583,20 @@ async def create_study(
             )
             ft.start()
             _flower_servers[study_id] = ft
+
+    # GPU queue: user wants GPU but CUDA isn't available right now
+    if compute_mode == "gpu":
+        import torch as _torch
+        if not _torch.cuda.is_available():
+            jobs[study_id]["status"] = "gpu_queued"
+            if store:
+                try:
+                    store.update(study_id, status="gpu_queued")
+                except Exception as e:
+                    logger.warning(f"gpu_queued status update failed: {e}")
+            logger.info(f"[{study_id[:8]}] GPU requested but unavailable — queued as gpu_queued")
+            logger.info(f"[{study_id[:8]}] Study created — {architecture}")
+            return {"study_id": study_id, "status": "gpu_queued"}
 
     with _queue_lock:
         running_count = sum(1 for j in jobs.values() if j.get("status") == "running")
@@ -543,7 +614,7 @@ async def create_study(
                 store.update(study_id, status="queued")
         logger.info(f"[queue] Study {study_id[:8]} queued at position {queue_position}")
     else:
-        _launch_training_now()
+        _launch_training_now(compute_mode)
 
     logger.info(f"[{study_id[:8]}] Study created — {architecture}")
     return {"study_id": study_id, "status": "pending"}

@@ -11,3 +11,5 @@ supabase==2.7.4
 resend==2.5.1
 requests>=2.31
 pytest
+nibabel>=5.2
+psutil>=5.9

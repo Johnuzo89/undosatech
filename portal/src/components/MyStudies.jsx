@@ -8,6 +8,7 @@ const ORCHESTRATOR = import.meta.env.VITE_API_URL || "https://undosatech-product
 
 const STATUS_CONFIG = {
   queued:    { color: "#94a3b8", bg: "rgba(148,163,184,0.1)", icon: "⏳", label: "Queued" },
+  gpu_queued:{ color: "#7c3aed", bg: "rgba(124,58,237,0.1)", icon: "🎮", label: "Queued for GPU" },
   pending:   { color: "#94a3b8", bg: "rgba(148,163,184,0.1)", icon: "⏳", label: "Pending" },
   running:   { color: "#38bdf8", bg: "rgba(56,189,248,0.1)",  icon: "⚡", label: "Running" },
   completed: { color: "#22d3a5", bg: "rgba(34,211,165,0.1)",  icon: "✓",  label: "Complete" },
@@ -141,7 +142,7 @@ function StudyCard({ study, session, onStop, onDelete }) {
 
   const id = study.id || study.study_id;
   const isRunning = study.status === "running";
-  const isActive = study.status === "queued" || study.status === "pending" || isRunning;
+  const isActive = study.status === "queued" || study.status === "gpu_queued" || study.status === "pending" || isRunning;
 
   useEffect(() => {
     if (!expanded) return;
@@ -369,7 +370,7 @@ export default function MyStudies({ session }) {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
-        {["all", "running", "completed", "failed", "stopped", "cancelled", "queued"].map(f => {
+        {["all", "running", "completed", "failed", "stopped", "cancelled", "queued", "gpu_queued"].map(f => {
           const count = f === "all" ? studies.length : (counts[f] || 0);
           if (f !== "all" && count === 0) return null;
           const c = STATUS_CONFIG[f] || { color: "#94a3b8" };

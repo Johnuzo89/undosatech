@@ -26,8 +26,9 @@ function StatusPill({ status }) {
     running:   ['rgba(88,86,214,0.1)',    '#5856D6'],
     completed: ['rgba(50,215,75,0.1)',    '#1a9e3a'],
     failed:    ['rgba(255,59,48,0.1)',    '#FF3B30'],
-    cancelled: ['rgba(142,142,147,0.12)','#8E8E93'],
-    stopped:   ['rgba(255,159,10,0.1)',   '#FF9F0A'],
+    cancelled:  ['rgba(142,142,147,0.12)','#8E8E93'],
+    stopped:    ['rgba(255,159,10,0.1)',   '#FF9F0A'],
+    gpu_queued: ['rgba(124,58,237,0.1)',   '#7c3aed'],
     active:    ['rgba(50,215,75,0.1)',    '#1a9e3a'],
     offline:   ['rgba(142,142,147,0.12)','#8E8E93'],
     suspended: ['rgba(255,59,48,0.1)',    '#FF3B30'],
@@ -575,6 +576,64 @@ function NodeHealth({ session }) {
 }
 
 // ── Main AdminDashboard ───────────────────────────────────────────────────────
+function HardwareStatus({ session }) {
+  const [hw, setHw] = useState(null)
+  const [err, setErr] = useState(null)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/admin/hardware`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+      if (res.ok) setHw(await res.json())
+      else setErr('Failed to load hardware info')
+    } catch (e) { setErr(e.message) }
+  }, [session])
+
+  useEffect(() => { load(); const id = setInterval(load, 30000); return () => clearInterval(id) }, [load])
+
+  const fmt = (bytes) => {
+    if (!bytes) return '—'
+    if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
+    return `${(bytes / 1e6).toFixed(0)} MB`
+  }
+
+  if (err) return <div style={{ color: '#FF3B30', padding: 20 }}>{err}</div>
+  if (!hw) return <div style={{ color: '#8E8E93', padding: 40, textAlign: 'center' }}>Loading hardware info…</div>
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 20 }}>
+        <div style={S.card}>
+          <div style={{ fontSize: 11, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>CPU</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#1D1D1F' }}>{hw.cpu.count} cores</div>
+        </div>
+        <div style={S.card}>
+          <div style={{ fontSize: 11, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>RAM</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#1D1D1F' }}>{fmt(hw.ram.total_bytes)}</div>
+          <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4 }}>{fmt(hw.ram.used_bytes)} used</div>
+        </div>
+        <div style={{ ...S.card, borderLeft: `3px solid ${hw.gpu.available ? '#32D74B' : '#FF9F0A'}` }}>
+          <div style={{ fontSize: 11, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>GPU</div>
+          <div style={{ fontSize: hw.gpu.available ? 16 : 14, fontWeight: 700, color: hw.gpu.available ? '#1a9e3a' : '#FF9F0A' }}>
+            {hw.gpu.available ? hw.gpu.name || 'Available' : 'Not available (CPU plan)'}
+          </div>
+          {hw.gpu.vram_bytes && <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4 }}>{fmt(hw.gpu.vram_bytes)} VRAM</div>}
+        </div>
+        <div style={{ ...S.card, borderLeft: hw.studies.gpu_queued > 0 ? '3px solid #FF9F0A' : undefined }}>
+          <div style={{ fontSize: 11, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>GPU demand</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: hw.studies.gpu_queued > 0 ? '#FF9F0A' : '#1D1D1F' }}>{hw.studies.gpu_queued}</div>
+          <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4 }}>studies queued for GPU · {hw.studies.running} running</div>
+          {hw.studies.gpu_queued >= 3 && !hw.gpu.available && (
+            <div style={{ marginTop: 10, fontSize: 12, color: '#FF9F0A', background: 'rgba(255,159,10,0.08)', borderRadius: 8, padding: '6px 10px' }}>
+              Consider upgrading to a GPU plan — {hw.studies.gpu_queued} users are waiting
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'right' }}>Auto-refreshes every 30s</div>
+    </div>
+  )
+}
+
 export default function AdminDashboard({ session }) {
   const [tab, setTab] = useState('overview')
   const [stats, setStats] = useState(null)
@@ -640,6 +699,7 @@ export default function AdminDashboard({ session }) {
         {navTab('studies', `🔬 All Studies`, 0)}
         {navTab('users', '👥 Users', 0)}
         {navTab('health', '🟢 Node Health', 0)}
+        {navTab('hardware', '⚙️ Hardware', 0)}
       </div>
 
       {tab === 'overview' && (
@@ -664,6 +724,7 @@ export default function AdminDashboard({ session }) {
 
       {tab === 'users' && <Users session={session} />}
       {tab === 'health' && <NodeHealth session={session} />}
+      {tab === 'hardware' && <HardwareStatus session={session} />}
     </div>
   )
 }

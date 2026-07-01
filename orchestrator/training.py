@@ -24,7 +24,7 @@ router = APIRouter()
 def detect_and_load(
     upload_path: Optional[Path], dataset_name: str,
     partition_id: int, num_partitions: int,
-    img_size: int = 28, max_samples: int = None,
+    img_size: int = 28, max_samples: int = None, **kwargs,
 ):
     import torch
     from torch.utils.data import DataLoader, TensorDataset, Subset, random_split
@@ -43,10 +43,17 @@ def detect_and_load(
         "organamnist":    ("OrganAMNIST",   1, 11, ["Bladder","Femur-L","Femur-R","Heart","Kidney-L","Kidney-R","Liver","Lung-L","Lung-R","Pancreas","Spleen"]),
     }
 
-    # ── OpenNeuro dataset (participants.tsv tabular classification) ──────────
+    # ── OpenNeuro dataset — route to NIfTI imaging or tabular based on compute ─
     if dataset_name.startswith("openneuro:"):
-        on_id = dataset_name.split(":", 1)[1]
-        return _load_openneuro_tabular(on_id, partition_id, num_partitions, max_samples)
+        on_id        = dataset_name.split(":", 1)[1]
+        compute_mode = kwargs.get("compute_mode", "cpu")
+        use_gpu      = compute_mode == "gpu" and __import__("torch").cuda.is_available()
+        img_size     = 64 if use_gpu else 32
+        try:
+            return _load_openneuro_nifti(on_id, partition_id, num_partitions, max_samples, img_size)
+        except Exception as e:
+            logger.warning(f"NIfTI loader failed ({e}) — falling back to tabular for {on_id}")
+            return _load_openneuro_tabular(on_id, partition_id, num_partitions, max_samples)
 
     if dataset_name.lower() in medmnist_map:
         cls_name, in_ch, n_cls, class_names = medmnist_map[dataset_name.lower()]
@@ -328,6 +335,158 @@ def _load_openneuro_tabular(on_id: str, partition_id: int, num_partitions: int, 
     return (
         DataLoader(train_ds, batch_size=min(32, n_train), shuffle=True,  num_workers=0),
         DataLoader(test_ds,  batch_size=min(32, n_test or 1),  shuffle=False, num_workers=0),
+        n_cls, 1, desc, classes,
+    )
+
+
+# ── OpenNeuro NIfTI imaging loader ────────────────────────────────────────────
+def _load_openneuro_nifti(on_id: str, partition_id: int, num_partitions: int,
+                          max_samples=None, img_size: int = 32):
+    """
+    Download structural MRI (T1w) scans from OpenNeuro S3 for each subject in
+    this FL partition, extract the middle axial slice, resize to img_size²,
+    and build a classification dataset using diagnosis labels from participants.tsv.
+
+    Falls back to tabular if nibabel is unavailable or fewer than 4 scans download.
+    """
+    import math, tempfile, os
+    import torch, numpy as np
+    from torch.utils.data import DataLoader, TensorDataset, random_split
+    import torch.nn.functional as F
+    from orchestrator.openneuro_connector import download_participant_tsv, _resolve_latest_tag
+
+    try:
+        import nibabel as nib
+    except ImportError:
+        logger.warning(f"nibabel not installed — falling back to tabular for {on_id}")
+        return _load_openneuro_tabular(on_id, partition_id, num_partitions, max_samples)
+
+    tag = _resolve_latest_tag(on_id) or "latest"
+    tsv = download_participant_tsv(on_id, tag)
+    if not tsv:
+        raise ValueError(f"OpenNeuro {on_id}: participants.tsv not found")
+
+    rows    = [ln.split("\t") for ln in tsv.strip().split("\n") if ln]
+    headers = [h.strip() for h in rows[0]]
+    data_rows = [dict(zip(headers, r)) for r in rows[1:]]
+
+    # Determine label column
+    label_col = None
+    for c in ("dxStatus", "diagnosis", "group", "condition", "label", "dx"):
+        if c in headers:
+            label_col = c; break
+    if label_col is None:
+        label_col = headers[-1]
+
+    labels_raw = [r.get(label_col, "").strip() for r in data_rows]
+    classes = sorted(set(l for l in labels_raw if l))
+    if not classes:
+        raise ValueError(f"OpenNeuro {on_id}: no labels in column '{label_col}'")
+    label_map = {c: i for i, c in enumerate(classes)}
+
+    valid_subjects = [
+        (r.get("participant_id", "").strip().replace("sub-", ""),
+         label_map[r.get(label_col, "").strip()])
+        for r in data_rows if r.get(label_col, "").strip() in label_map
+        and r.get("participant_id", "").strip()
+    ]
+
+    # Partition subjects across FL nodes
+    n_total = len(valid_subjects)
+    cap     = min(n_total // max(num_partitions, 1), max_samples or n_total) or n_total
+    start   = partition_id * cap
+    end     = min(start + cap, n_total)
+    partition_subjects = valid_subjects[start:end] or valid_subjects  # fallback: all
+
+    # Cache dir for downloaded scans
+    cache_dir = UPLOADS_DIR / "openneuro" / on_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    S3_BASE = f"https://s3.amazonaws.com/openneuro.org/{on_id}"
+    # Common T1w path patterns in BIDS order of likelihood
+    T1W_PATTERNS = [
+        "sub-{id}/anat/sub-{id}_T1w.nii.gz",
+        "sub-{id}/anat/sub-{id}_acq-mprage_T1w.nii.gz",
+        "sub-{id}/anat/sub-{id}_rec-norm_T1w.nii.gz",
+    ]
+
+    import requests as _requests
+    X_list, y_list = [], []
+
+    for sub_id, label in partition_subjects:
+        cached_path = cache_dir / f"{sub_id}_slice.npy"
+
+        # Use cached slice if already downloaded
+        if cached_path.exists():
+            try:
+                slice_2d = np.load(str(cached_path))
+                X_list.append(slice_2d); y_list.append(label)
+                continue
+            except Exception:
+                cached_path.unlink(missing_ok=True)
+
+        # Try each T1w path pattern
+        downloaded = False
+        for pattern in T1W_PATTERNS:
+            url = f"{S3_BASE}/{pattern.format(id=sub_id)}"
+            try:
+                r = _requests.get(url, timeout=30, stream=True)
+                if r.status_code != 200:
+                    continue
+                with tempfile.NamedTemporaryFile(suffix=".nii.gz", delete=False) as f:
+                    for chunk in r.iter_content(8192):
+                        f.write(chunk)
+                    tmp = f.name
+                try:
+                    img_nib = nib.load(tmp)
+                    vol     = img_nib.get_fdata(dtype=np.float32)
+                    # Middle axial slice
+                    z_mid    = vol.shape[2] // 2
+                    slice_2d = vol[:, :, z_mid]
+                    vmin, vmax = slice_2d.min(), slice_2d.max()
+                    if vmax > vmin:
+                        slice_2d = (slice_2d - vmin) / (vmax - vmin)
+                    np.save(str(cached_path), slice_2d.astype(np.float32))
+                    X_list.append(slice_2d); y_list.append(label)
+                    downloaded = True
+                    logger.info(f"OpenNeuro {on_id}: sub-{sub_id} slice cached ({vol.shape})")
+                finally:
+                    os.unlink(tmp)
+                break
+            except Exception as e:
+                logger.warning(f"OpenNeuro {on_id}: sub-{sub_id} {pattern} failed: {e}")
+
+        if not downloaded:
+            logger.warning(f"OpenNeuro {on_id}: sub-{sub_id} — no T1w scan found, skipping")
+
+    if len(X_list) < 4:
+        logger.warning(f"OpenNeuro {on_id}: only {len(X_list)} scans downloaded — falling back to tabular")
+        return _load_openneuro_tabular(on_id, partition_id, num_partitions, max_samples)
+
+    # Resize all slices to img_size × img_size using torch
+    X_tensors = []
+    for sl in X_list:
+        t = torch.FloatTensor(sl).unsqueeze(0).unsqueeze(0)   # (1,1,H,W)
+        t = F.interpolate(t, size=(img_size, img_size), mode="bilinear", align_corners=False)
+        X_tensors.append(t.squeeze(0))                         # (1,H,W)
+
+    X_t   = torch.stack(X_tensors)                            # (N,1,H,W)
+    y_t   = torch.LongTensor(y_list)
+    n_cls = len(classes)
+
+    ds      = TensorDataset(X_t, y_t)
+    n_train = max(1, int(len(ds) * 0.8))
+    train_ds, test_ds = random_split(ds, [n_train, len(ds) - n_train])
+
+    desc = (
+        f"OpenNeuro {on_id} · NIfTI T1w imaging · {len(X_list)} scans · "
+        f"{img_size}px axial slices · label={label_col} · {n_cls} classes · "
+        f"partition {partition_id+1}/{num_partitions}"
+    )
+    logger.info(f"OpenNeuro {on_id}: NIfTI loader ready — {len(X_list)} scans, {n_cls} classes ({classes}), {img_size}px")
+    return (
+        DataLoader(train_ds, batch_size=min(16, n_train), shuffle=True,  num_workers=0),
+        DataLoader(test_ds,  batch_size=min(16, len(ds)-n_train or 1), shuffle=False, num_workers=0),
         n_cls, 1, desc, classes,
     )
 
@@ -629,6 +788,7 @@ def train_thread(
     study_id, upload_path, dataset_name, num_rounds, local_epochs,
     arch, nodes_config, dp_noise_multiplier=None,
     resume_from=0, initial_state=None, prior_results=None,
+    compute_mode="cpu",
 ):
     import torch, torch.nn as nn, torch.optim as optim
     import json as _json
@@ -677,6 +837,7 @@ def train_thread(
             tl, vl, num_classes, in_ch, desc, class_names = detect_and_load(
                 upload_path, dataset_name, i, num_nodes,
                 img_size=img_size, max_samples=effective_sample_cap,
+                compute_mode=compute_mode,
             )
             node_loaders.append((tl, vl))
             if i == 0:

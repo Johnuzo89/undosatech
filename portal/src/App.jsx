@@ -698,6 +698,9 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const [invitationMessage,setInvitationMessage]=useState('')
   const [classDescs,setClassDescs]=useState([{name:'',desc:''}])
   const [connectedDatasets,setConnectedDatasets]=useState([])
+  const [computeMode,setComputeMode]=useState('cpu')
+  const [showGpuModal,setShowGpuModal]=useState(false)
+  const [gpuCheckBusy,setGpuCheckBusy]=useState(false)
   const [form,setForm]=useState({
     study_name:'', researcher_name: user?.user_metadata?.full_name || '',
     institution: user?.user_metadata?.institution || '',
@@ -716,6 +719,18 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
   const updateClassDesc = (i,k,v) => setClassDescs(d=>d.map((r,j)=>j===i?{...r,[k]:v}:r))
   const applyPreset=(p)=>{setPreset(p);const f=PRESETS.find(x=>x.v===p);if(f&&f.rounds){set('num_rounds',f.rounds);set('local_epochs',f.epochs)}}
 
+  const handleComputeToggle=async(wantHigh)=>{
+    if(!wantHigh){setComputeMode('cpu');return}
+    setGpuCheckBusy(true)
+    try{
+      const r=await fetch(`${API}/compute/availability`,{headers:{Authorization:`Bearer ${session?.access_token}`}})
+      const d=await r.json()
+      if(d.gpu_available){setComputeMode('gpu')}
+      else{setShowGpuModal(true)}
+    }catch{setShowGpuModal(true)}
+    finally{setGpuCheckBusy(false)}
+  }
+
   const hasRealNodes = preselectedNodes.length > 0
   const defaultNodes = [
     {node_id:'nhs-moorfields-sim',institution_name:'NHS Moorfields Eye Hospital (Simulated)',partition_id:0},
@@ -733,6 +748,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
       fd.append('nodes', JSON.stringify(nodes))
       if(file)fd.append('file',file)
       if(form.dp_enabled){fd.append('dp_noise_multiplier', (1.0/form.dp_epsilon).toFixed(4))}
+      fd.append('compute_mode', computeMode)
       if(hasRealNodes && invitationMessage) fd.append('invitation_message', invitationMessage)
       if(form.dataset==='upload'){
         const filled = classDescs.filter(c=>c.name.trim())
@@ -903,12 +919,53 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
           </div>
         )}
       </div>
+      <div style={S.card}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',textTransform:'uppercase',letterSpacing:'0.05em'}}>Compute Performance</div>
+            <div style={{fontSize:12,color:'#6E6E73',marginTop:2}}>Standard uses CPU. High Performance requests GPU acceleration.</div>
+          </div>
+          {gpuCheckBusy&&<span style={{fontSize:11,color:'#9ca3af'}}>Checking…</span>}
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:10}}>
+          <button type="button" onClick={()=>handleComputeToggle(false)}
+            style={{flex:1,padding:'8px 0',borderRadius:8,fontSize:13,fontWeight:500,cursor:'pointer',border:`1px solid ${computeMode==='cpu'?'#007AFF':'#d1d5db'}`,background:computeMode==='cpu'?'rgba(0,122,255,0.08)':'#fff',color:computeMode==='cpu'?'#007AFF':'#6b7280'}}>
+            Standard
+          </button>
+          <button type="button" onClick={()=>handleComputeToggle(true)} disabled={gpuCheckBusy}
+            style={{flex:1,padding:'8px 0',borderRadius:8,fontSize:13,fontWeight:500,cursor:gpuCheckBusy?'not-allowed':'pointer',border:`1px solid ${computeMode!=='cpu'?'#7c3aed':'#d1d5db'}`,background:computeMode!=='cpu'?'rgba(124,58,237,0.08)':'#fff',color:computeMode!=='cpu'?'#7c3aed':'#6b7280'}}>
+            High Performance
+          </button>
+        </div>
+        {computeMode==='gpu'&&<div style={{marginTop:8,fontSize:11,color:'#7c3aed',background:'rgba(124,58,237,0.06)',borderRadius:6,padding:'6px 10px'}}>GPU acceleration active — NIfTI images will be processed at 64³ resolution</div>}
+        {computeMode==='gpu_queued'&&<div style={{marginTop:8,fontSize:11,color:'#d97706',background:'rgba(251,191,36,0.1)',borderRadius:6,padding:'6px 10px'}}>Queued for GPU — training will start automatically when GPU becomes available</div>}
+      </div>
+
+      {showGpuModal&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#fff',borderRadius:16,padding:28,maxWidth:380,width:'90%',boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+            <div style={{fontSize:20,marginBottom:8}}>GPU Unavailable</div>
+            <div style={{fontSize:14,color:'#6b7280',marginBottom:20,lineHeight:1.6}}>No GPU is available right now. You can run on CPU immediately, or queue your study to start automatically when GPU capacity becomes available.</div>
+            <div style={{display:'flex',gap:10}}>
+              <button type="button" onClick={()=>{setComputeMode('cpu');setShowGpuModal(false)}}
+                style={{flex:1,padding:'10px 0',borderRadius:10,border:'1px solid #d1d5db',background:'#f9fafb',fontSize:13,fontWeight:600,cursor:'pointer',color:'#374151'}}>
+                Run on CPU now
+              </button>
+              <button type="button" onClick={()=>{setComputeMode('gpu_queued');setShowGpuModal(false)}}
+                style={{flex:1,padding:'10px 0',borderRadius:10,border:'none',background:'#7c3aed',fontSize:13,fontWeight:600,cursor:'pointer',color:'#fff'}}>
+                Queue for GPU
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{background:'rgba(0,122,255,0.06)',border:'1px solid rgba(0,122,255,0.15)',borderRadius:12,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#007AFF',display:'flex',alignItems:'center',gap:8}}>
         🔒 <span><strong>Zero raw data transfer.</strong> Only model weight gradients are aggregated via FedAvg. Full governance audit trail generated automatically.</span>
       </div>
       {err&&<div style={{background:'rgba(255,59,48,0.08)',border:'1px solid rgba(255,59,48,0.2)',borderRadius:10,padding:'10px 14px',color:'#FF3B30',fontSize:13,marginBottom:12,fontWeight:500}}>{err}</div>}
       <button type="submit" disabled={busy} style={{width:'100%',padding:'14px 0',background:busy?'rgba(0,122,255,0.5)':'#007AFF',color:'#fff',borderRadius:12,fontWeight:600,fontSize:15,cursor:busy?'not-allowed':'pointer',border:'none',letterSpacing:'-0.01em',boxShadow:busy?'none':'0 4px 12px rgba(0,122,255,0.35)',transition:'all 0.15s'}}>
-        {busy?'Launching…': hasRealNodes ? '🚀 Launch study & send invitations' : '🚀 Launch federated training'}
+        {busy?'Launching…': computeMode==='gpu_queued'?'📋 Queue for GPU & launch when ready': hasRealNodes ? '🚀 Launch study & send invitations' : '🚀 Launch federated training'}
       </button>
     </form>
   )
