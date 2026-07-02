@@ -634,6 +634,393 @@ function HardwareStatus({ session }) {
   )
 }
 
+// ── Cohort Admin tab ──────────────────────────────────────────────────────────
+
+const MODALITY_OPTS  = ['OCT','fundus','MRI','CT','EEG','histopathology','mixed']
+const FORMAT_OPTS    = ['DICOM','BIDS','NIfTI','CSV','mixed']
+const ACCESS_OPTS    = ['open','application_required','restricted']
+const CONSENT_OPTS   = ['broad_consent','dynamic_consent','waived','anonymised']
+const STATUS_OPTS    = ['pending','published','archived']
+
+const STATUS_COLORS = {
+  published: { bg: '#f0fdf4', color: '#059669', border: '#a7f3d0' },
+  pending:   { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
+  archived:  { bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb' },
+}
+
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function CohortFormModal({ cohort, onSave, onClose, session }) {
+  const isNew = !cohort
+  const blank = {
+    name: '', slug: '', description: '', contributing_institution: '',
+    modality: 'OCT', disease_area: '', sample_count: '',
+    age_range_min: '', age_range_max: '', data_format: 'DICOM',
+    imaging_device: '', longitudinal: false, follow_up_years: '',
+    access_type: 'application_required', ethics_reference: '',
+    consent_basis: 'broad_consent', dspt_compliant: true, ico_registered: true,
+    status: 'pending', featured: false, doi: '', description: '',
+  }
+  const [form, setForm] = useState(isNew ? blank : { ...cohort })
+  const [busy, setBusy] = useState(false)
+  const [err,  setErr]  = useState(null)
+
+  const set = (k, v) => setForm(f => {
+    const next = { ...f, [k]: v }
+    if (k === 'name' && isNew) next.slug = slugify(v)
+    return next
+  })
+
+  const submit = async e => {
+    e.preventDefault()
+    setBusy(true); setErr(null)
+    const payload = {
+      ...form,
+      sample_count:    form.sample_count    ? +form.sample_count    : null,
+      age_range_min:   form.age_range_min   ? +form.age_range_min   : null,
+      age_range_max:   form.age_range_max   ? +form.age_range_max   : null,
+      follow_up_years: form.follow_up_years ? +form.follow_up_years : null,
+    }
+    const url  = isNew ? `${API}/admin/cohorts` : `${API}/admin/cohorts/${cohort.id}`
+    const method = isNew ? 'POST' : 'PATCH'
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setErr(d.detail || `HTTP ${res.status}`); setBusy(false); return }
+      onSave()
+    } catch (ex) { setErr(ex.message); setBusy(false) }
+  }
+
+  const inp = { ...S.inp, marginBottom: 12 }
+  const lbl = { display: 'block', fontSize: 11, fontWeight: 600, color: '#6E6E73',
+    marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.05em' }
+  const sel = { ...inp, cursor: 'pointer' }
+  const half = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: '#fff', borderRadius: 18, padding: '28px 28px 24px',
+        maxWidth: 620, width: '100%', maxHeight: '92vh', overflowY: 'auto',
+        boxShadow: '0 32px 80px rgba(0,0,0,0.3)' }}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{isNew ? 'Add cohort' : 'Edit cohort'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22,
+            cursor: 'pointer', color: '#9ca3af', lineHeight: 1 }}>×</button>
+        </div>
+
+        {err && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9,
+            padding: '10px 14px', color: '#991b1b', fontSize: 13, marginBottom: 16 }}>{err}</div>
+        )}
+
+        <form onSubmit={submit}>
+          {/* Identity */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase',
+            letterSpacing: '0.08em', marginBottom: 10 }}>Identity</div>
+          <label style={lbl}>Cohort name *</label>
+          <input style={inp} required value={form.name} onChange={e => set('name', e.target.value)} placeholder="UK Glaucoma Longitudinal Cohort" />
+          <div style={half}>
+            <div>
+              <label style={lbl}>Slug *</label>
+              <input style={inp} required value={form.slug} onChange={e => set('slug', e.target.value)} placeholder="uk-glaucoma-longitudinal" />
+            </div>
+            <div>
+              <label style={lbl}>Contributing institution *</label>
+              <input style={inp} required value={form.contributing_institution} onChange={e => set('contributing_institution', e.target.value)} placeholder="Moorfields Eye Hospital" />
+            </div>
+          </div>
+          <label style={lbl}>Description</label>
+          <textarea style={{ ...inp, resize: 'vertical', marginBottom: 16 }} rows={3}
+            value={form.description || ''} onChange={e => set('description', e.target.value)}
+            placeholder="Brief description of the cohort..." />
+
+          {/* Classification */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase',
+            letterSpacing: '0.08em', marginBottom: 10 }}>Classification</div>
+          <div style={half}>
+            <div>
+              <label style={lbl}>Modality *</label>
+              <select style={sel} value={form.modality} onChange={e => set('modality', e.target.value)}>
+                {MODALITY_OPTS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Disease area *</label>
+              <input style={inp} required value={form.disease_area} onChange={e => set('disease_area', e.target.value)} placeholder="Glaucoma" />
+            </div>
+          </div>
+
+          {/* Size */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase',
+            letterSpacing: '0.08em', marginBottom: 10 }}>Size</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            {[['sample_count','Participants','1847'],['age_range_min','Age min','18'],['age_range_max','Age max','90']].map(([k,label,ph]) => (
+              <div key={k}>
+                <label style={lbl}>{label}</label>
+                <input style={inp} type="number" min={0} value={form[k] || ''} onChange={e => set(k, e.target.value)} placeholder={ph} />
+              </div>
+            ))}
+          </div>
+
+          {/* Technical */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase',
+            letterSpacing: '0.08em', marginBottom: 10 }}>Technical</div>
+          <div style={half}>
+            <div>
+              <label style={lbl}>Data format</label>
+              <select style={sel} value={form.data_format} onChange={e => set('data_format', e.target.value)}>
+                {FORMAT_OPTS.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Imaging device</label>
+              <input style={inp} value={form.imaging_device || ''} onChange={e => set('imaging_device', e.target.value)} placeholder="Heidelberg Spectralis" />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 20, marginBottom: 16, alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!form.longitudinal} onChange={e => set('longitudinal', e.target.checked)} />
+              Longitudinal
+            </label>
+            {form.longitudinal && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ ...lbl, margin: 0 }}>Follow-up years</label>
+                <input style={{ ...inp, width: 80, marginBottom: 0 }} type="number" step="0.1" min={0}
+                  value={form.follow_up_years || ''} onChange={e => set('follow_up_years', e.target.value)} placeholder="3.5" />
+              </div>
+            )}
+          </div>
+
+          {/* Governance */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase',
+            letterSpacing: '0.08em', marginBottom: 10 }}>Governance</div>
+          <div style={half}>
+            <div>
+              <label style={lbl}>Access type</label>
+              <select style={sel} value={form.access_type} onChange={e => set('access_type', e.target.value)}>
+                {ACCESS_OPTS.map(a => <option key={a} value={a}>{a.replace(/_/g,' ')}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Consent basis</label>
+              <select style={sel} value={form.consent_basis} onChange={e => set('consent_basis', e.target.value)}>
+                {CONSENT_OPTS.map(c => <option key={c} value={c}>{c.replace(/_/g,' ')}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={half}>
+            <div>
+              <label style={lbl}>Ethics reference</label>
+              <input style={inp} value={form.ethics_reference || ''} onChange={e => set('ethics_reference', e.target.value)} placeholder="REC-22/LO/1847" />
+            </div>
+            <div>
+              <label style={lbl}>DOI</label>
+              <input style={inp} value={form.doi || ''} onChange={e => set('doi', e.target.value)} placeholder="10.1038/..." />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
+            {[['dspt_compliant','DSPT compliant'],['ico_registered','ICO registered'],['featured','Featured']].map(([k,label]) => (
+              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!form[k]} onChange={e => set(k, e.target.checked)} />
+                {label}
+              </label>
+            ))}
+          </div>
+
+          {/* Catalogue status */}
+          <div style={half}>
+            <div>
+              <label style={lbl}>Status</label>
+              <select style={sel} value={form.status} onChange={e => set('status', e.target.value)}>
+                {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" disabled={busy} style={{ width: '100%', padding: '12px 0',
+            background: busy ? 'rgba(0,122,255,0.5)' : '#007AFF', color: '#fff', border: 'none',
+            borderRadius: 10, fontWeight: 600, fontSize: 14, cursor: busy ? 'not-allowed' : 'pointer',
+            marginTop: 8 }}>
+            {busy ? 'Saving…' : isNew ? 'Create cohort' : 'Save changes'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function CohortAdmin({ session }) {
+  const [cohorts, setCohorts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [msg,     setMsg]     = useState(null)
+  const [editing, setEditing] = useState(null)
+  const [adding,  setAdding]  = useState(false)
+  const [busy,    setBusy]    = useState({})
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${API}/admin/cohorts`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+      if (res.ok) setCohorts(await res.json())
+    } catch (_) {}
+    setLoading(false)
+  }, [session])
+
+  useEffect(() => { load() }, [load])
+
+  const flash = m => { setMsg(m); setTimeout(() => setMsg(null), 3500) }
+
+  const patch = async (id, fields) => {
+    setBusy(b => ({ ...b, [id]: true }))
+    try {
+      await fetch(`${API}/admin/cohorts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(fields),
+      })
+      await load()
+      flash('Updated.')
+    } catch (_) { flash('Update failed.') }
+    setBusy(b => ({ ...b, [id]: false }))
+  }
+
+  const archive = async id => {
+    if (!window.confirm('Archive this cohort? It will be hidden from the public catalogue.')) return
+    setBusy(b => ({ ...b, [id]: true }))
+    try {
+      await fetch(`${API}/admin/cohorts/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${session.access_token}` } })
+      await load(); flash('Archived.')
+    } catch (_) { flash('Archive failed.') }
+    setBusy(b => ({ ...b, [id]: false }))
+  }
+
+  const counts = {
+    published: cohorts.filter(c => c.status === 'published').length,
+    pending:   cohorts.filter(c => c.status === 'pending').length,
+    archived:  cohorts.filter(c => c.status === 'archived').length,
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: '#1D1D1F' }}>Data Catalogue — Cohort Management</div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+            {counts.published} published · {counts.pending} pending · {counts.archived} archived
+          </div>
+        </div>
+        <button onClick={() => setAdding(true)} style={{ ...btn('#007AFF'), padding: '9px 18px', fontSize: 13 }}>
+          + Add cohort
+        </button>
+      </div>
+
+      {msg && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #a7f3d0', borderRadius: 9,
+          padding: '10px 16px', color: '#065f46', fontSize: 13, marginBottom: 16 }}>{msg}</div>
+      )}
+
+      {loading && <div style={{ color: '#9ca3af', fontSize: 13, padding: '20px 0' }}>Loading cohorts…</div>}
+
+      {!loading && (
+        <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 14,
+          overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['Cohort','Modality','Participants','Access','Status','Featured','Actions'].map(h => (
+                  <th key={h} style={S.th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cohorts.map(c => {
+                const sc = STATUS_COLORS[c.status] || STATUS_COLORS.archived
+                return (
+                  <tr key={c.id}>
+                    <td style={S.td}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: '#1D1D1F', marginBottom: 1 }}>{c.name}</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{c.contributing_institution}</div>
+                    </td>
+                    <td style={S.td}>
+                      <span style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
+                        borderRadius: 99, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>
+                        {c.modality}
+                      </span>
+                    </td>
+                    <td style={S.td}>{c.sample_count ? c.sample_count.toLocaleString() : '—'}</td>
+                    <td style={S.td}>
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>{(c.access_type || '').replace(/_/g,' ')}</span>
+                    </td>
+                    <td style={S.td}>
+                      <select
+                        value={c.status}
+                        disabled={!!busy[c.id]}
+                        onChange={e => patch(c.id, { status: e.target.value })}
+                        style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`,
+                          borderRadius: 99, padding: '3px 10px', fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer', outline: 'none' }}>
+                        {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ ...S.td, textAlign: 'center' }}>
+                      <button
+                        onClick={() => patch(c.id, { featured: !c.featured })}
+                        disabled={!!busy[c.id]}
+                        style={{ background: 'none', border: 'none', fontSize: 18,
+                          cursor: 'pointer', opacity: busy[c.id] ? 0.4 : 1 }}
+                        title={c.featured ? 'Unfeature' : 'Feature'}>
+                        {c.featured ? '★' : '☆'}
+                      </button>
+                    </td>
+                    <td style={S.td}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setEditing(c)}
+                          style={{ ...btn('rgba(0,122,255,0.08)', '#007AFF', true), padding: '5px 12px', fontSize: 12 }}>
+                          Edit
+                        </button>
+                        {c.status !== 'archived' && (
+                          <button onClick={() => archive(c.id)} disabled={!!busy[c.id]}
+                            style={{ ...btn('rgba(220,38,38,0.06)', '#dc2626', true), padding: '5px 12px', fontSize: 12 }}>
+                            Archive
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {cohorts.length === 0 && (
+                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#9ca3af', padding: '32px 0' }}>
+                  No cohorts yet. Click "Add cohort" to create the first one.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {(adding || editing) && (
+        <CohortFormModal
+          cohort={editing}
+          session={session}
+          onClose={() => { setAdding(false); setEditing(null) }}
+          onSave={async () => { setAdding(false); setEditing(null); await load(); flash('Saved.') }}
+        />
+      )}
+    </div>
+  )
+}
+
+
 export default function AdminDashboard({ session }) {
   const [tab, setTab] = useState('overview')
   const [stats, setStats] = useState(null)
@@ -696,6 +1083,7 @@ export default function AdminDashboard({ session }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
         {navTab('overview', '📊 Overview', 0)}
         {navTab('requests', '📋 Access Requests', pendingCount)}
+        {navTab('cohorts', '🗂 Cohorts', 0)}
         {navTab('studies', `🔬 All Studies`, 0)}
         {navTab('users', '👥 Users', 0)}
         {navTab('health', '🟢 Node Health', 0)}
@@ -717,6 +1105,8 @@ export default function AdminDashboard({ session }) {
           onStatsRefresh={() => { fetchStats(); fetchRequests() }}
         />
       )}
+
+      {tab === 'cohorts' && <CohortAdmin session={session} />}
 
       {tab === 'studies' && (
         <AllStudies studies={studies} loading={studiesLoading} />

@@ -325,6 +325,55 @@ async def admin_hardware(authorization: Optional[str] = Header(None)):
     }
 
 
+@router.get("/admin/cohorts")
+async def admin_list_cohorts(authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    result = supabase_admin.table("cohorts").select("*").order("created_at", desc=True).execute()
+    return result.data or []
+
+
+@router.post("/admin/cohorts", status_code=201)
+async def admin_create_cohort(body: dict = Body(default={}), authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        result = supabase_admin.table("cohorts").insert(body).execute()
+        return result.data[0] if result.data else {}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@router.patch("/admin/cohorts/{cohort_id}")
+async def admin_update_cohort(
+    cohort_id: str,
+    body: dict = Body(default={}),
+    authorization: Optional[str] = Header(None),
+):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        result = supabase_admin.table("cohorts").update(body).eq("id", cohort_id).execute()
+        return result.data[0] if result.data else {}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@router.delete("/admin/cohorts/{cohort_id}")
+async def admin_archive_cohort(cohort_id: str, authorization: Optional[str] = Header(None)):
+    _require_admin(authorization)
+    if not supabase_admin:
+        raise HTTPException(503, "Requires Supabase")
+    try:
+        supabase_admin.table("cohorts").update({"status": "archived"}).eq("id", cohort_id).execute()
+        return {"success": True, "id": cohort_id}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
 @router.get("/admin/storage-debug")
 async def storage_debug(authorization: Optional[str] = Header(None)):
     """Diagnose Supabase Storage state."""
