@@ -15,7 +15,8 @@ CREATE INDEX IF NOT EXISTS idx_access_requests_email_status
 
 -- Allow authenticated users to read their own requests
 -- (Previously only service role could SELECT — now researchers can track their own apps)
-CREATE POLICY IF NOT EXISTS "Users can read own access requests"
+DROP POLICY IF EXISTS "Users can read own access requests" ON access_requests;
+CREATE POLICY "Users can read own access requests"
   ON access_requests FOR SELECT
   TO authenticated
   USING (email = (auth.jwt()->>'email'));
