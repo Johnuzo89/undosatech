@@ -9,6 +9,7 @@ import StudyReport from './components/StudyReport'
 import CompliancePack from './components/CompliancePack'
 import DataConnectors from './components/DataConnectors'
 import DataCatalogue from './components/DataCatalogue'
+import MyApplications from './components/MyApplications'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -1330,6 +1331,7 @@ export default function App() {
         <span style={{fontWeight:700,fontSize:15,color:'#1D1D1F',letterSpacing:'-0.02em'}}>UndosaTech</span>
       </div>
       {nav('catalogue','Catalogue',0)}
+      {nav('applications','My Access',0)}
       {nav('launch','Launch',0)}
       {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
@@ -1353,6 +1355,7 @@ export default function App() {
     </header>
     <div style={{maxWidth:820,width:'100%',margin:'0 auto',padding:'32px 20px'}}>
       {tab==='catalogue'&&<DataCatalogue session={session}/>}
+      {tab==='applications'&&<MyApplications session={session} onBrowseCatalogue={()=>setTab('catalogue')} onLaunchStudy={()=>setTab('launch')}/>}
       {tab==='launch'&&!selected&&<LaunchForm onLaunched={(id,hadInvitations)=>{setSelected(id);setTab('studies');setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
       {tab==='nodes'&&(
         <NodeRegistry

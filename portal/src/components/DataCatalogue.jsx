@@ -84,7 +84,9 @@ function AccessRequestModal({ cohort, onClose, session }) {
       full_name:     form.full_name,
       institution:   form.institution,
       role:          form.role,
-      research_area: `[${cohort.name}] ${form.research_area}`,
+      research_area: form.research_area,
+      cohort_id:     cohort.id,
+      cohort_name:   cohort.name,
       status:        'pending',
       created_at:    new Date().toISOString(),
     })
