@@ -10,7 +10,7 @@ const supabase = createClient(
 
 const MODALITIES = ['All', 'OCT', 'fundus', 'MRI', 'CT', 'EEG', 'histopathology', 'mixed']
 const DISEASES   = ['All', 'Glaucoma', 'Age-related Macular Degeneration', 'Diabetic Retinopathy',
-                    'Neuroscience', 'Alzheimer\'s Disease', 'Epilepsy', 'Multiple Sclerosis',
+                    'Neuropsychiatric Disorders', 'Alzheimer\'s Disease', 'Epilepsy', 'Multiple Sclerosis',
                     'Keratoconus', 'Other']
 const ACCESS     = ['All', 'application_required', 'open', 'restricted']
 

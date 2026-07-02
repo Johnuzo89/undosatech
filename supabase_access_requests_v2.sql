@@ -26,3 +26,8 @@ SELECT column_name, data_type
 FROM information_schema.columns
 WHERE table_name = 'access_requests'
 ORDER BY ordinal_position;
+
+-- Fix BRIGS cohort disease_area (run separately if catalogue migration was already applied)
+UPDATE cohorts
+SET disease_area = 'Neuropsychiatric Disorders'
+WHERE slug = 'brigs-neuroimaging';

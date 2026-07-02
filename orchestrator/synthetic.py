@@ -15,7 +15,7 @@ _ICD10 = {
     "Glaucoma":                     ["H40.10", "H40.11", "H40.12", "H40.20", "H40.30"],
     "Age-related Macular Degeneration": ["H35.30", "H35.31", "H35.32", "H35.33"],
     "Diabetic Retinopathy":         ["E11.311", "E11.319", "E11.329", "E11.349", "E11.359"],
-    "Neuroscience":                 ["G20", "G30.9", "F32.9", "F41.1", "G35"],
+    "Neuropsychiatric Disorders":   ["F32.9", "F33.0", "F41.1", "F41.9", "F06.30"],
     "Alzheimer's Disease":          ["G30.0", "G30.1", "G30.8", "G30.9"],
     "Epilepsy":                     ["G40.009", "G40.019", "G40.109", "G40.209", "G40.309"],
     "Multiple Sclerosis":           ["G35"],
@@ -49,12 +49,13 @@ def _dr_fields(rng):
         "diabetes_duration_yr": int(rng.exponential(9).clip(1, 40)),
     }
 
-def _neuro_fields(rng):
+def _neuropsychiatric_fields(rng):
     return {
-        "mmse_score":          int(rng.normal(24, 5).clip(0, 30)),
-        "hippocampal_vol_mm3": round(rng.normal(3100, 450).clip(1200, 4500), 0),
-        "wm_lesion_vol_ml":    round(rng.exponential(2.8).clip(0, 30), 2),
-        "gcs":                 int(rng.normal(14, 1).clip(3, 15)),
+        "phq9_score":          int(rng.normal(10, 5).clip(0, 27)),
+        "gad7_score":          int(rng.normal(8, 4).clip(0, 21)),
+        "moca_score":          int(rng.normal(25, 3).clip(0, 30)),
+        "hippocampal_vol_mm3": round(rng.normal(3300, 380).clip(1800, 4500), 0),
+        "wm_lesion_vol_ml":    round(rng.exponential(1.2).clip(0, 15), 2),
     }
 
 def _alzheimers_fields(rng):
@@ -93,7 +94,7 @@ _DISEASE_FIELDS = {
     "Glaucoma":                         _glaucoma_fields,
     "Age-related Macular Degeneration": _amd_fields,
     "Diabetic Retinopathy":             _dr_fields,
-    "Neuroscience":                     _neuro_fields,
+    "Neuropsychiatric Disorders":       _neuropsychiatric_fields,
     "Alzheimer's Disease":              _alzheimers_fields,
     "Epilepsy":                         _epilepsy_fields,
     "Multiple Sclerosis":               _ms_fields,

@@ -162,11 +162,11 @@ INSERT INTO cohorts (
 (
     'BRain Imaging Genetics Study (BRIGS) — Neuroimaging Cohort',
     'brigs-neuroimaging',
-    'Multimodal neuroimaging cohort with structural MRI (T1w, T2w, FLAIR), diffusion tensor imaging (DTI), and resting-state fMRI. Participants recruited from the Generation Scotland and UK Biobank volunteers (N=2,109). Phenotyped for depression, anxiety, and cognitive performance. All MRI data converted to BIDS v1.8 format.',
+    'Multimodal neuroimaging cohort with structural MRI (T1w, T2w, FLAIR), diffusion tensor imaging (DTI), and resting-state fMRI. Participants recruited from the Generation Scotland and UK Biobank volunteers (N=2,109). Phenotyped for depression (PHQ-9), anxiety (GAD-7), and cognitive performance (MoCA). All MRI data converted to BIDS v1.8 format.',
     'University of Edinburgh / Centre for Clinical Brain Sciences',
     'United Kingdom',
     'MRI',
-    'Neuroscience',
+    'Neuropsychiatric Disorders',
     ARRAY['structural MRI', 'DTI', 'fMRI', 'depression', 'cognition', 'BIDS'],
     2109,
     40, 80,
