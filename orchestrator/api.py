@@ -891,6 +891,42 @@ def download_model(study_id: str, format: str = Query("pt"), authorization: Opti
     raise HTTPException(404, "Model file not found. The server may have restarted after training — please re-run the study to regenerate the model.")
 
 
+@app.get("/dp/fields/{disease_area:path}")
+async def dp_queryable_fields(disease_area: str):
+    """Return queryable fields for a disease area."""
+    from orchestrator.dp_query import get_queryable_fields
+    return get_queryable_fields(disease_area)
+
+
+@app.post("/dp/query")
+async def dp_query(body: dict = Body(default={})):
+    """
+    Run a differentially private aggregate query over synthetic cohort records.
+    Body: { cohort, query_type, field, epsilon, n_samples?, bins?, category_value? }
+    """
+    from orchestrator.dp_query import run_query
+    cohort         = body.get("cohort", {})
+    query_type     = body.get("query_type", "mean")
+    field          = body.get("field", "age")
+    epsilon        = float(body.get("epsilon", 1.0))
+    n_samples      = min(int(body.get("n_samples", 500)), 2000)
+    bins           = min(int(body.get("bins", 10)), 20)
+    category_value = body.get("category_value")
+    try:
+        result = run_query(
+            cohort=cohort,
+            query_type=query_type,
+            field=field,
+            epsilon=epsilon,
+            n_samples=n_samples,
+            bins=bins,
+            category_value=category_value,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/synthetic/generate")
 async def synthetic_generate(
     body: dict = Body(default={}),
