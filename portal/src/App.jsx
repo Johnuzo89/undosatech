@@ -11,6 +11,7 @@ import DataConnectors from './components/DataConnectors'
 import DataCatalogue from './components/DataCatalogue'
 import MyApplications from './components/MyApplications'
 import TREWorkspace from './components/TREWorkspace'
+import SyntheticDataGenerator from './components/SyntheticDataGenerator'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -1335,6 +1336,7 @@ export default function App() {
       {nav('catalogue','Catalogue',0)}
       {nav('applications','My Access',0)}
       {nav('tre','TRE',0)}
+      {nav('synthetic','Synthetic',0)}
       {nav('launch','Launch',0)}
       {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
@@ -1360,6 +1362,7 @@ export default function App() {
       {tab==='catalogue'&&<DataCatalogue session={session}/>}
       {tab==='applications'&&<MyApplications session={session} onBrowseCatalogue={()=>setTab('catalogue')} onLaunchStudy={req=>{setTreInitialCohort(req);setTab('tre')}}/>}
       {tab==='tre'&&<TREWorkspace session={session} initialCohort={treInitialCohort} studies={studies} onLaunchStudy={()=>setTab('launch')}/>}
+      {tab==='synthetic'&&<SyntheticDataGenerator session={session}/>}
       {tab==='launch'&&!selected&&<LaunchForm onLaunched={(id,hadInvitations)=>{setSelected(id);setTab('studies');setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
       {tab==='nodes'&&(
         <NodeRegistry

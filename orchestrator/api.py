@@ -891,6 +891,53 @@ def download_model(study_id: str, format: str = Query("pt"), authorization: Opti
     raise HTTPException(404, "Model file not found. The server may have restarted after training — please re-run the study to regenerate the model.")
 
 
+@app.post("/synthetic/generate")
+async def synthetic_generate(
+    body: dict = Body(default={}),
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Generate synthetic patient records from cohort metadata.
+    Returns JSON preview (first 10 rows) or full CSV download.
+    Body: { cohort: {...}, n: int, dp_epsilon: float|null, format: 'preview'|'csv' }
+    """
+    from orchestrator.synthetic import generate_records, records_to_csv
+
+    cohort      = body.get("cohort", {})
+    n           = min(int(body.get("n", 200)), 5000)
+    dp_epsilon  = body.get("dp_epsilon")
+    fmt         = body.get("format", "preview")
+
+    if dp_epsilon is not None:
+        try:
+            dp_epsilon = float(dp_epsilon)
+            if dp_epsilon <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise HTTPException(400, "dp_epsilon must be a positive number")
+
+    records = generate_records(cohort=cohort, n=n, dp_epsilon=dp_epsilon)
+
+    if fmt == "csv":
+        slug = cohort.get("slug", "cohort")
+        dp_tag = f"_dp{dp_epsilon}" if dp_epsilon else ""
+        filename = f"synthetic_{slug}{dp_tag}_n{n}.csv"
+        return Response(
+            content=records_to_csv(records),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    return {
+        "total":       n,
+        "preview":     records[:10],
+        "columns":     list(records[0].keys()) if records else [],
+        "dp_enabled":  dp_epsilon is not None,
+        "dp_epsilon":  dp_epsilon,
+        "disease_area": cohort.get("disease_area", ""),
+    }
+
+
 @app.get("/datasets")
 def list_datasets():
     return {
