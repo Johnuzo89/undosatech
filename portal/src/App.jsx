@@ -8,6 +8,7 @@ import StudyInvitations from './components/StudyInvitations'
 import StudyReport from './components/StudyReport'
 import CompliancePack from './components/CompliancePack'
 import DataConnectors from './components/DataConnectors'
+import DataCatalogue from './components/DataCatalogue'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -1328,6 +1329,7 @@ export default function App() {
         <div style={{width:30,height:30,borderRadius:9,background:'linear-gradient(145deg,#007AFF,#5856D6)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:14,flexShrink:0,boxShadow:'0 2px 8px rgba(0,122,255,0.3)'}}>U</div>
         <span style={{fontWeight:700,fontSize:15,color:'#1D1D1F',letterSpacing:'-0.02em'}}>UndosaTech</span>
       </div>
+      {nav('catalogue','Catalogue',0)}
       {nav('launch','Launch',0)}
       {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
@@ -1350,6 +1352,7 @@ export default function App() {
       </div>
     </header>
     <div style={{maxWidth:820,width:'100%',margin:'0 auto',padding:'32px 20px'}}>
+      {tab==='catalogue'&&<DataCatalogue session={session}/>}
       {tab==='launch'&&!selected&&<LaunchForm onLaunched={(id,hadInvitations)=>{setSelected(id);setTab('studies');setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
       {tab==='nodes'&&(
         <NodeRegistry
