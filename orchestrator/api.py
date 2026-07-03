@@ -43,6 +43,7 @@ from orchestrator.integrations import router as integrations_router
 from orchestrator.lineage import record_lineage, router as lineage_router
 from orchestrator.fhir_adapter import router as fhir_router
 from orchestrator.analytics import router as analytics_router
+from orchestrator.observability import MetricsMiddleware, router as observability_router
 
 
 # ── Compliance text ───────────────────────────────────────────────────────────
@@ -398,6 +399,8 @@ def _gpu_queue_watcher():
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(title="UndosaTech API", version="7.0.0", lifespan=lifespan)
 
+app.add_middleware(MetricsMiddleware)
+
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://app.undosatech.com").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -416,6 +419,7 @@ app.include_router(integrations_router)
 app.include_router(lineage_router)
 app.include_router(fhir_router)
 app.include_router(analytics_router)
+app.include_router(observability_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
