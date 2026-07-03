@@ -1133,6 +1133,17 @@ def train_thread(
             })
 
         audit(study_id, "study_completed", {"final_accuracy": final_acc, "model_path": str(fp)})
+        try:
+            from orchestrator.lineage import record_lineage
+            record_lineage(
+                "model", f"{study_id}/{arch}_final",
+                action="trained",
+                parent_type="study", parent_id=study_id,
+                metadata={"architecture": arch, "final_accuracy": final_acc,
+                          "storage_key": model_storage_key or str(fp)},
+            )
+        except Exception as e:
+            logger.warning(f"[{study_id[:8]}] Lineage record failed: {e}")
         logger.info(f"{'═'*60}")
         logger.info(f"[TRAIN DONE] {study_id[:8]} | acc={final_acc:.3f} | loss={final_loss:.4f} | κ={final_cohen_kappa}")
         logger.info(f"{'═'*60}")

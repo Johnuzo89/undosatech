@@ -40,6 +40,7 @@ from orchestrator.training import (
 from orchestrator.nodes import _node_monitor_loop, router as nodes_router
 from orchestrator.admin import router as admin_router
 from orchestrator.integrations import router as integrations_router
+from orchestrator.lineage import record_lineage, router as lineage_router
 
 
 # ── Compliance text ───────────────────────────────────────────────────────────
@@ -410,6 +411,7 @@ app.include_router(training_router)
 app.include_router(nodes_router)
 app.include_router(admin_router)
 app.include_router(integrations_router)
+app.include_router(lineage_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -537,6 +539,20 @@ async def create_study(
             "ethics_ref": ethics_ref or "[To be completed by institution]",
             "compute_mode": compute_mode,
         }
+
+    try:
+        dataset_ref = (file.filename if file and file.filename else dataset)
+        record_lineage(
+            "study", study_id,
+            action="created_from_dataset",
+            parent_type="dataset", parent_id=dataset_ref,
+            actor=getattr(user, "email", ""),
+            metadata={"architecture": architecture, "num_rounds": num_rounds,
+                      "dp_enabled": dp_noise_multiplier is not None,
+                      "nodes": len(nodes_config)},
+        )
+    except Exception as e:
+        logger.warning(f"Lineage record failed for study {study_id[:8]}: {e}")
 
     # Auto-invite real registered nodes (skip simulated placeholders)
     SIM_SUFFIXES = ("-sim",)
@@ -971,6 +987,15 @@ async def synthetic_generate(
         slug = cohort.get("slug", "cohort")
         dp_tag = f"_dp{dp_epsilon}" if dp_epsilon else ""
         filename = f"synthetic_{slug}{dp_tag}_n{n}.csv"
+        try:
+            record_lineage(
+                "synthetic_export", filename,
+                action="generated",
+                parent_type="cohort", parent_id=slug,
+                metadata={"n": n, "dp_epsilon": dp_epsilon},
+            )
+        except Exception as e:
+            logger.warning(f"Lineage record failed for synthetic export: {e}")
         return Response(
             content=records_to_csv(records),
             media_type="text/csv",
