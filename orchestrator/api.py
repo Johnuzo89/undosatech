@@ -42,6 +42,7 @@ from orchestrator.admin import router as admin_router
 from orchestrator.integrations import router as integrations_router
 from orchestrator.lineage import record_lineage, router as lineage_router
 from orchestrator.fhir_adapter import router as fhir_router
+from orchestrator.analytics import router as analytics_router
 
 
 # ── Compliance text ───────────────────────────────────────────────────────────
@@ -414,6 +415,7 @@ app.include_router(admin_router)
 app.include_router(integrations_router)
 app.include_router(lineage_router)
 app.include_router(fhir_router)
+app.include_router(analytics_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -953,7 +955,8 @@ async def dp_query(body: dict = Body(default={})):
             bins=bins,
             category_value=category_value,
         )
-        return result
+        from orchestrator.sdc import apply_sdc_to_dp_result
+        return apply_sdc_to_dp_result(result)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

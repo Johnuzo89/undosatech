@@ -13,3 +13,4 @@ requests>=2.31
 pytest
 nibabel>=5.2
 psutil>=5.9
+duckdb
