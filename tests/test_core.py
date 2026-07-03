@@ -30,9 +30,13 @@ def test_dp_apply_update():
 
 def test_convergence_detection():
     from orchestrator.training import _check_convergence
-    results = [{"val_accuracy": 0.8 + i * 0.001} for i in range(5)]
-    out = _check_convergence(results)
-    assert "converged" in out
+    plateau = [{"global_accuracy": 0.8 + i * 0.001, "global_loss": 0.5 - i * 0.01} for i in range(5)]
+    assert _check_convergence(plateau)["status"] == "plateau"
+    improving = [{"global_accuracy": 0.5 + i * 0.05, "global_loss": 0.9 - i * 0.05} for i in range(5)]
+    assert _check_convergence(improving)["status"] == "healthy"
+    diverging = [{"global_accuracy": 0.5, "global_loss": 0.5 + i * 0.1} for i in range(5)]
+    assert _check_convergence(diverging)["status"] == "diverging"
+    assert _check_convergence([])["status"] == "healthy"
 
 
 def test_epsilon_accounting():
