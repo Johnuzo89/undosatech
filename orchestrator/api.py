@@ -41,6 +41,7 @@ from orchestrator.nodes import _node_monitor_loop, router as nodes_router
 from orchestrator.admin import router as admin_router
 from orchestrator.integrations import router as integrations_router
 from orchestrator.lineage import record_lineage, router as lineage_router
+from orchestrator.fhir_adapter import router as fhir_router
 
 
 # ── Compliance text ───────────────────────────────────────────────────────────
@@ -412,6 +413,7 @@ app.include_router(nodes_router)
 app.include_router(admin_router)
 app.include_router(integrations_router)
 app.include_router(lineage_router)
+app.include_router(fhir_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
