@@ -1,6 +1,7 @@
 // portal/src/components/AdminDashboard.jsx
 
 import { useState, useEffect, useCallback } from 'react'
+import ObservabilityPanel from './ObservabilityPanel'
 
 const API = import.meta.env.VITE_API_URL || 'https://undosatech-production.up.railway.app'
 
@@ -1088,6 +1089,7 @@ export default function AdminDashboard({ session }) {
         {navTab('users', '👥 Users', 0)}
         {navTab('health', '🟢 Node Health', 0)}
         {navTab('hardware', '⚙️ Hardware', 0)}
+        {navTab('metrics', '📈 Metrics', 0)}
       </div>
 
       {tab === 'overview' && (
@@ -1115,6 +1117,7 @@ export default function AdminDashboard({ session }) {
       {tab === 'users' && <Users session={session} />}
       {tab === 'health' && <NodeHealth session={session} />}
       {tab === 'hardware' && <HardwareStatus session={session} />}
+      {tab === 'metrics' && <ObservabilityPanel session={session} />}
     </div>
   )
 }

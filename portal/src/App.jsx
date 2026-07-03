@@ -13,6 +13,8 @@ import MyApplications from './components/MyApplications'
 import TREWorkspace from './components/TREWorkspace'
 import SyntheticDataGenerator from './components/SyntheticDataGenerator'
 import DPQueryConsole from './components/DPQueryConsole'
+import AnalyticsConsole from './components/AnalyticsConsole'
+import SecuritySettings, { MFAChallenge } from './components/SecuritySettings'
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -1281,10 +1283,19 @@ export default function App() {
   const [selectedNodes, setSelectedNodes] = useState([])
   const [studyInitialTab, setStudyInitialTab] = useState('live')
   const [treInitialCohort, setTreInitialCohort] = useState(null)
+  const [mfaRequired, setMfaRequired] = useState(false)
+
+  const checkMfa = useCallback(async ()=>{
+    try{
+      const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      setMfaRequired(data?.nextLevel === 'aal2' && data?.currentLevel !== 'aal2')
+    }catch{ setMfaRequired(false) }
+  },[])
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
       setSession(session); setUser(session?.user||null); setLoading(false)
+      if(session) checkMfa()
     })
     const {data:{subscription}} = supabase.auth.onAuthStateChange((event, session)=>{
       if (event === 'PASSWORD_RECOVERY') {
@@ -1292,11 +1303,13 @@ export default function App() {
         setSession(session); setUser(session?.user||null)
       } else {
         setSession(session); setUser(session?.user||null)
+        if(session && event === 'SIGNED_IN') checkMfa()
+        if(event === 'MFA_CHALLENGE_VERIFIED') setMfaRequired(false)
       }
       setLoading(false)
     })
     return()=>subscription.unsubscribe()
-  },[])
+  },[checkMfa])
 
   const refresh=useCallback(async()=>{
     try{
@@ -1317,6 +1330,9 @@ export default function App() {
   if(loading) return <div style={{minHeight:'100vh',background:'#0f172a',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{color:'#94a3b8',fontSize:14}}>Loading…</div></div>
   if(resetMode) return <ResetPasswordScreen onDone={()=>setResetMode(false)}/>
   if(!user) return <AuthScreen onAuth={(u,s)=>{setUser(u);setSession(s)}}/>
+  if(mfaRequired) return <MFAChallenge
+    onVerified={async()=>{const{data:{session:s}}=await supabase.auth.getSession();setSession(s);setMfaRequired(false)}}
+    onSignOut={async()=>{await supabase.auth.signOut();setSession(null);setUser(null);setMfaRequired(false)}}/>
 
   const running=studies.filter(s=>s.status==='running').length
   const completed=studies.filter(s=>s.status==='completed').length
@@ -1339,11 +1355,13 @@ export default function App() {
       {nav('tre','TRE',0)}
       {nav('synthetic','Synthetic',0)}
       {nav('dpquery','DP Console',0)}
+      {nav('analytics','SQL',0)}
       {nav('launch','Launch',0)}
       {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
       {nav('connectors','Connectors',0)}
       {nav('aria','🛡 ARIA',0)}
+      {nav('security','🔐',0)}
       {isAdmin&&nav('admin','Admin',0)}
       <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
         {completed>0&&<span style={{fontSize:12,color:'#32D74B',fontWeight:600,background:'rgba(50,215,75,0.1)',padding:'4px 10px',borderRadius:99}}>{completed} completed</span>}
@@ -1366,6 +1384,8 @@ export default function App() {
       {tab==='tre'&&<TREWorkspace session={session} initialCohort={treInitialCohort} studies={studies} onLaunchStudy={()=>setTab('launch')}/>}
       {tab==='synthetic'&&<SyntheticDataGenerator session={session}/>}
       {tab==='dpquery'&&<DPQueryConsole session={session}/>}
+      {tab==='analytics'&&<AnalyticsConsole session={session}/>}
+      {tab==='security'&&<SecuritySettings/>}
       {tab==='launch'&&!selected&&<LaunchForm onLaunched={(id,hadInvitations)=>{setSelected(id);setTab('studies');setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
       {tab==='nodes'&&(
         <NodeRegistry
