@@ -26,7 +26,7 @@ from orchestrator.state import (
     _study_queue, _queue_lock, _flower_servers,
     WEIGHTS_DIR, UPLOADS_DIR, AUDIT_PATH,
     ADMIN_EMAILS, APP_URL, FLOWER_PORT, MAX_CONCURRENT_STUDIES,
-    audit,
+    audit, verify_audit_chain,
 )
 from orchestrator.auth import (
     _require_user, _require_admin, _get_node_contact, _send_invitation_email,
@@ -692,6 +692,19 @@ def get_audit(study_id: str):
             except Exception as parse_err:
                 logger.warning(f"Audit log parse error: {parse_err}")
     return {"study_id": study_id, "events": events}
+
+
+@app.get("/audit/verify")
+def audit_verify(authorization: Optional[str] = Header(None)):
+    """Verify the integrity of the hash-chained audit log."""
+    _require_user(authorization)
+    return verify_audit_chain()
+
+
+@app.get("/studies/{study_id}/audit/verify")
+def audit_verify_study(study_id: str, authorization: Optional[str] = Header(None)):
+    _require_user(authorization)
+    return verify_audit_chain(study_id)
 
 
 @app.get("/studies/{study_id}/audit/export")

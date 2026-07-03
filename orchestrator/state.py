@@ -51,15 +51,95 @@ _flower_servers: dict        = {}          # study_id → Thread
 _connections: dict           = {}          # in-memory fallback for data_connections
 
 
-# ── Audit helper ──────────────────────────────────────────────────────────────
+# ── Audit helper — hash-chained immutable log ─────────────────────────────────
+import hashlib
+
+_GENESIS_HASH = "0" * 64
+_audit_lock   = threading.Lock()
+_last_hash: Optional[str] = None  # cached tip of the chain
+
+
+def _compute_entry_hash(prev_hash: str, row: dict) -> str:
+    """SHA-256 over prev_hash + canonical JSON of the row (minus the hash fields)."""
+    payload = {k: v for k, v in row.items() if k not in ("prev_hash", "entry_hash")}
+    canon   = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256((prev_hash + canon).encode()).hexdigest()
+
+
+def _load_last_hash() -> str:
+    """Read the tip of the chain from the tail of the JSONL file (once at startup)."""
+    if not AUDIT_PATH.exists():
+        return _GENESIS_HASH
+    last = _GENESIS_HASH
+    try:
+        for line in AUDIT_PATH.read_text().splitlines():
+            try:
+                e = json.loads(line)
+                if e.get("entry_hash"):
+                    last = e["entry_hash"]
+            except Exception:
+                continue
+    except Exception as e:
+        logger.warning(f"Audit chain tail read failed: {e}")
+    return last
+
+
 def audit(study_id: str, event_type: str, data: dict) -> None:
-    """Append an immutable audit event to the JSONL log file."""
-    row = {
-        "event_id":   str(uuid.uuid4()),
-        "study_id":   study_id,
-        "timestamp":  datetime.now(timezone.utc).isoformat(),
-        "event_type": event_type,
-        **data,
-    }
-    with open(AUDIT_PATH, "a") as f:
-        f.write(json.dumps(row) + "\n")
+    """Append an immutable, hash-chained audit event (JSONL + Supabase)."""
+    global _last_hash
+    with _audit_lock:
+        if _last_hash is None:
+            _last_hash = _load_last_hash()
+        row = {
+            "event_id":   str(uuid.uuid4()),
+            "study_id":   study_id,
+            "timestamp":  datetime.now(timezone.utc).isoformat(),
+            "event_type": event_type,
+            **data,
+        }
+        row["prev_hash"]  = _last_hash
+        row["entry_hash"] = _compute_entry_hash(_last_hash, row)
+        _last_hash        = row["entry_hash"]
+        with open(AUDIT_PATH, "a") as f:
+            f.write(json.dumps(row, default=str) + "\n")
+    if supabase_admin:
+        try:
+            supabase_admin.table("audit_logs").insert({
+                "event_id":   row["event_id"],
+                "study_id":   study_id,
+                "event_type": event_type,
+                "data":       {k: v for k, v in data.items()},
+                "prev_hash":  row["prev_hash"],
+                "entry_hash": row["entry_hash"],
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Supabase audit insert failed ({event_type}): {e}")
+
+
+def verify_audit_chain(study_id: Optional[str] = None) -> dict:
+    """
+    Walk the JSONL log recomputing hashes to prove the chain is intact.
+    Legacy (pre-chain) rows are counted but not verifiable.
+    Returns {valid, checked, legacy, breaks: [event_id,...]}.
+    """
+    checked, legacy, breaks = 0, 0, []
+    prev = _GENESIS_HASH
+    if AUDIT_PATH.exists():
+        for line in AUDIT_PATH.read_text().splitlines():
+            try:
+                e = json.loads(line)
+            except Exception:
+                breaks.append("unparseable-line")
+                continue
+            if not e.get("entry_hash"):
+                legacy += 1
+                continue
+            expected = _compute_entry_hash(prev, e)
+            if e.get("prev_hash") != prev or e["entry_hash"] != expected:
+                breaks.append(e.get("event_id", "unknown"))
+            prev = e["entry_hash"]
+            checked += 1
+    result = {"valid": not breaks, "checked": checked, "legacy_unverified": legacy, "breaks": breaks[:20]}
+    if study_id:
+        result["study_id"] = study_id
+    return result
