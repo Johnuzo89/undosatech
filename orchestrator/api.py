@@ -948,18 +948,20 @@ def download_model(study_id: str, format: str = Query("pt"), authorization: Opti
 
 
 @app.get("/dp/fields/{disease_area:path}")
-async def dp_queryable_fields(disease_area: str):
+async def dp_queryable_fields(disease_area: str, authorization: Optional[str] = Header(None)):
     """Return queryable fields for a disease area."""
+    _require_user(authorization)
     from orchestrator.dp_query import get_queryable_fields
     return get_queryable_fields(disease_area)
 
 
 @app.post("/dp/query")
-async def dp_query(body: dict = Body(default={})):
+async def dp_query(body: dict = Body(default={}), authorization: Optional[str] = Header(None)):
     """
     Run a differentially private aggregate query over synthetic cohort records.
     Body: { cohort, query_type, field, epsilon, n_samples?, bins?, category_value? }
     """
+    user = _require_user(authorization)
     from orchestrator.dp_query import run_query
     cohort         = body.get("cohort", {})
     query_type     = body.get("query_type", "mean")
@@ -979,6 +981,13 @@ async def dp_query(body: dict = Body(default={})):
             category_value=category_value,
         )
         from orchestrator.sdc import apply_sdc_to_dp_result
+        audit("dp-console", "dp_query_executed", {
+            "user": getattr(user, "email", None) or str(getattr(user, "id", "unknown")),
+            "cohort": cohort.get("slug") or cohort.get("name"),
+            "query_type": query_type,
+            "field": field,
+            "epsilon": epsilon,
+        })
         return apply_sdc_to_dp_result(result)
     except ValueError as e:
         raise HTTPException(400, str(e))

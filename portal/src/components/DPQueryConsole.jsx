@@ -216,7 +216,11 @@ export default function DPQueryConsole({ session }) {
 
   useEffect(() => {
     if (!selected) return
-    fetch(`${API}/dp/fields/${encodeURIComponent(selected.disease_area)}`)
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) =>
+        fetch(`${API}/dp/fields/${encodeURIComponent(selected.disease_area)}`, {
+          headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {},
+        }))
       .then(r => r.json())
       .then(f => {
         setFields(f)
@@ -239,9 +243,13 @@ export default function DPQueryConsole({ session }) {
     if (!selected || !field || overBudget) return
     setLoading(true); setError(null)
     try {
+      const { data: { session: fresh } } = await supabase.auth.getSession()
       const res = await fetch(`${API}/dp/query`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(fresh?.access_token ? { Authorization: `Bearer ${fresh.access_token}` } : {}),
+        },
         body: JSON.stringify({
           cohort:         selected,
           query_type:     queryType,

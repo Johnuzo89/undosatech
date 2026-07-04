@@ -382,8 +382,13 @@ function AuthScreen({ onAuth }) {
           )}
         </div>
         <div style={{textAlign:'center',marginTop:16,fontSize:11,color:'#475569'}}>
-          By signing in you agree to our research data governance framework.<br/>
+          By signing in you agree to our <a href="https://undosatech.com/terms" target="_blank" rel="noreferrer" style={{color:'#94a3b8'}}>terms</a> and research data governance framework.<br/>
           All activity is logged in an immutable audit trail.
+          <div style={{marginTop:8}}>
+            <a href="https://undosatech.com/privacy" target="_blank" rel="noreferrer" style={{color:'#64748b',marginRight:12}}>Privacy</a>
+            <a href="https://undosatech.com/terms" target="_blank" rel="noreferrer" style={{color:'#64748b',marginRight:12}}>Terms</a>
+            <a href="https://undosatech.com/trust" target="_blank" rel="noreferrer" style={{color:'#64748b'}}>Trust &amp; Security</a>
+          </div>
         </div>
       </div>
     </div>
