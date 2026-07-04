@@ -88,13 +88,15 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        working-directory: portal
+        # Run the Vercel CLI from the repo root: the project's Root Directory
+        # is "portal", so the CLI descends into it itself. Running inside
+        # portal/ would make it look for portal/portal/index.html.
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "::warning::VERCEL_TOKEN secret not set — skipping Vercel deploy"
             exit 0
           fi
-          npm ci
+          npm --prefix portal ci
           npx -y vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           npx -y vercel build --prod --token="$VERCEL_TOKEN"
           npx -y vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
