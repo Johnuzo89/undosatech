@@ -231,7 +231,6 @@ export default function DPQueryConsole() {
       .catch(() => {})
   }, [selected])
 
-  const fieldMeta     = fields[field] || {}
   const needsCat      = queryType === 'proportion'
   const needsBins     = queryType === 'histogram'
   const budgetLeft    = BUDGET_TOTAL - budgetSpent
