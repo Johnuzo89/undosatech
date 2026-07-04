@@ -426,7 +426,7 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
     finally { setPanelLoading(false); }
   };
 
-  const useForStudy = async (ds) => {
+  const saveForStudy = async (ds) => {
     setSaving(ds.id);
     try {
       const r = await fetch(`${API}/integrations/openneuro/save`, {
@@ -515,7 +515,7 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
                       <button style={{ ...S.btnSecondary, padding: '4px 10px', fontSize: 11 }} onClick={() => loadParticipants(ds)}>Participants</button>
                       <button
                         style={{ ...S.btnPrimary, padding: '4px 10px', fontSize: 11, background: saved[ds.id] ? '#059669' : '#007AFF' }}
-                        onClick={() => useForStudy(ds)}
+                        onClick={() => saveForStudy(ds)}
                         disabled={!!saving || saved[ds.id]}
                       >
                         {saved[ds.id] ? 'Saved' : saving === ds.id ? '…' : 'Use for study'}

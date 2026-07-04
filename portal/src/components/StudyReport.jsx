@@ -504,7 +504,7 @@ export default function StudyReport({ job }) {
             {macro_f1 != null && <div style={{ fontSize: 12, color: '#374151', marginTop: 3 }}>Macro F1: <strong>{macro_f1.toFixed(3)}</strong></div>}
             {weighted_f1 != null && <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>Weighted F1: <strong>{weighted_f1.toFixed(3)}</strong></div>}
             {cohen_kappa != null && (
-              <div style={{ fontSize: 12, marginTop: 6, padding: '4px 10px', background: cohen_kappa >= 0.8 ? '#f0fdf4' : cohen_kappa >= 0.6 ? '#eff6ff' : '#fffbeb',
+              <div style={{ fontSize: 12, padding: '4px 10px', background: cohen_kappa >= 0.8 ? '#f0fdf4' : cohen_kappa >= 0.6 ? '#eff6ff' : '#fffbeb',
                 border: `1px solid ${cohen_kappa >= 0.8 ? '#bbf7d0' : cohen_kappa >= 0.6 ? '#bfdbfe' : '#fde68a'}`,
                 borderRadius: 6, display: 'inline-block', marginTop: 8 }}>
                 Cohen's κ = <strong>{cohen_kappa.toFixed(3)}</strong>

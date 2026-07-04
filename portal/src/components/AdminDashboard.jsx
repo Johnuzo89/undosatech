@@ -662,7 +662,7 @@ function CohortFormModal({ cohort, onSave, onClose, session }) {
     imaging_device: '', longitudinal: false, follow_up_years: '',
     access_type: 'application_required', ethics_reference: '',
     consent_basis: 'broad_consent', dspt_compliant: true, ico_registered: true,
-    status: 'pending', featured: false, doi: '', description: '',
+    status: 'pending', featured: false, doi: '',
   }
   const [form, setForm] = useState(isNew ? blank : { ...cohort })
   const [busy, setBusy] = useState(false)

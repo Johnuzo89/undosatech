@@ -7,10 +7,11 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          supabase: ['@supabase/supabase-js'],
-          recharts: ['recharts'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('recharts') || id.includes('/d3-') || id.includes('victory-vendor')) return 'recharts'
+          if (id.includes('@supabase')) return 'supabase'
+          if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) return 'react'
         },
       },
     },
