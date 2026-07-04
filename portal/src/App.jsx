@@ -1,20 +1,26 @@
-import React, { useEffect, useState, useRef, useCallback, createContext, useContext } from 'react'
+import React, { useEffect, useState, useRef, useCallback, createContext, useContext, lazy, Suspense } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from 'recharts'
-import NodeRegistry from './components/NodeRegistry'
-import MyStudies from './components/MyStudies'
-import AdminDashboard from './components/AdminDashboard'
-import StudyInvitations from './components/StudyInvitations'
-import StudyReport from './components/StudyReport'
-import CompliancePack from './components/CompliancePack'
-import DataConnectors from './components/DataConnectors'
-import DataCatalogue from './components/DataCatalogue'
-import MyApplications from './components/MyApplications'
-import TREWorkspace from './components/TREWorkspace'
-import SyntheticDataGenerator from './components/SyntheticDataGenerator'
-import DPQueryConsole from './components/DPQueryConsole'
-import AnalyticsConsole from './components/AnalyticsConsole'
-import SecuritySettings, { MFAChallenge } from './components/SecuritySettings'
+
+// Heavy feature panels are code-split: each loads on first visit to its tab,
+// keeping the initial bundle to the shell + auth screen.
+const NodeRegistry           = lazy(() => import('./components/NodeRegistry'))
+const AdminDashboard         = lazy(() => import('./components/AdminDashboard'))
+const StudyInvitations       = lazy(() => import('./components/StudyInvitations'))
+const StudyReport            = lazy(() => import('./components/StudyReport'))
+const CompliancePack         = lazy(() => import('./components/CompliancePack'))
+const DataConnectors         = lazy(() => import('./components/DataConnectors'))
+const DataCatalogue          = lazy(() => import('./components/DataCatalogue'))
+const MyApplications         = lazy(() => import('./components/MyApplications'))
+const TREWorkspace           = lazy(() => import('./components/TREWorkspace'))
+const SyntheticDataGenerator = lazy(() => import('./components/SyntheticDataGenerator'))
+const DPQueryConsole         = lazy(() => import('./components/DPQueryConsole'))
+const AnalyticsConsole       = lazy(() => import('./components/AnalyticsConsole'))
+const SecuritySettings       = lazy(() => import('./components/SecuritySettings'))
+const MFAChallenge           = lazy(() => import('./components/SecuritySettings').then(m => ({ default: m.MFAChallenge })))
+const RoundsChart            = lazy(() => import('./components/StudyCharts').then(m => ({ default: m.RoundsChart })))
+const PerClassChart          = lazy(() => import('./components/StudyCharts').then(m => ({ default: m.PerClassChart })))
+
+const LazyFallback = <div style={{padding:40,textAlign:'center',color:'#9ca3af',fontSize:13}}>Loading…</div>
 
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || 'john@undosatech.com').split(',')
 
@@ -297,7 +303,6 @@ const PRESETS = [
   {v:'deep',     l:'Deep',     rounds:10,epochs:3},
   {v:'custom',   l:'Custom',   rounds:null,epochs:null},
 ]
-const COLORS=['#1d4ed8','#059669','#7c3aed','#d97706','#dc2626','#0891b2','#65a30d','#9333ea','#f59e0b','#10b981','#6366f1','#ef4444','#14b8a6','#f97316']
 
 function Badge({ status }) {
   const m = {
@@ -1056,7 +1061,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
   return(
     <div>
       <button onClick={onBack} style={{color:'#007AFF',fontSize:13,fontWeight:500,marginBottom:20,background:'none',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:4,padding:0}}>← All studies</button>
-      {job?<>
+      {job?<Suspense fallback={LazyFallback}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
           <div>
             <h2 style={{fontSize:20,fontWeight:700,marginBottom:4}}>{job.study_name||job.name}</h2>
@@ -1115,18 +1120,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
         {tab==='chart'&&<div style={S.card}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Global accuracy & loss per round</div>
           {chart.length===0?<div style={{color:'#9ca3af',fontSize:13}}>Updates as rounds complete…</div>:
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={chart}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                <XAxis dataKey="round" tick={{fontSize:11,fill:'#9ca3af'}}/>
-                <YAxis yAxisId="a" domain={[0,100]} tick={{fontSize:11,fill:'#9ca3af'}} unit="%"/>
-                <YAxis yAxisId="l" orientation="right" tick={{fontSize:11,fill:'#9ca3af'}}/>
-                <Tooltip formatter={(v,n)=>n==='acc'?`${v}%`:v}/>
-                <Legend wrapperStyle={{fontSize:12}}/>
-                <Line yAxisId="a" type="monotone" dataKey="acc" name="Accuracy" stroke="#1d4ed8" strokeWidth={2} dot={{r:4}} activeDot={{r:6}}/>
-                <Line yAxisId="l" type="monotone" dataKey="loss" name="Loss" stroke="#dc2626" strokeWidth={2} dot={{r:4}} strokeDasharray="4 2"/>
-              </LineChart>
-            </ResponsiveContainer>}
+            <RoundsChart chart={chart}/>}
         </div>}
         {tab==='per-class'&&<div style={S.card}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Per-class accuracy (latest round)</div>
@@ -1137,15 +1131,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
               : Object.values(rawPc)
             const labels=job.class_names||job.interpretability?.class_labels||pcData.map((_,i)=>`Class ${i}`)
             const data=pcData.map((acc,i)=>({name:labels[i]||`C${i}`,acc}))
-            return<ResponsiveContainer width="100%" height={240}>
-              <BarChart data={data} margin={{top:5,right:10,left:0,bottom:40}}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6"/>
-                <XAxis dataKey="name" tick={{fontSize:10,fill:'#6b7280'}} angle={-35} textAnchor="end"/>
-                <YAxis domain={[0,100]} tick={{fontSize:11,fill:'#9ca3af'}} unit="%"/>
-                <Tooltip formatter={v=>`${v}%`}/>
-                <Bar dataKey="acc" name="Accuracy" radius={[4,4,0,0]}>{data.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            return<PerClassChart data={data}/>
           })():<div style={{color:'#9ca3af',fontSize:13}}>Available after round 1.</div>}
         </div>}
         {tab==='nodes'&&<div>
@@ -1177,7 +1163,7 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
         </div>}
         {tab==='invitations'&&<StudyInvitations studyId={studyId} session={session} isAdmin={isAdmin}/>}
         {tab==='compliance'&&<div style={{background:'#fff',borderRadius:14,border:'1px solid rgba(0,0,0,0.07)',padding:'20px 24px',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}><CompliancePack studyId={studyId} session={session}/></div>}
-      </>:<div style={{color:'#9ca3af',padding:40,textAlign:'center'}}>Loading study…</div>}
+      </Suspense>:<div style={{color:'#9ca3af',padding:40,textAlign:'center'}}>Loading study…</div>}
     </div>
   )
 }
@@ -1330,9 +1316,9 @@ export default function App() {
   if(loading) return <div style={{minHeight:'100vh',background:'#0f172a',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{color:'#94a3b8',fontSize:14}}>Loading…</div></div>
   if(resetMode) return <ResetPasswordScreen onDone={()=>setResetMode(false)}/>
   if(!user) return <AuthScreen onAuth={(u,s)=>{setUser(u);setSession(s)}}/>
-  if(mfaRequired) return <MFAChallenge
+  if(mfaRequired) return <Suspense fallback={LazyFallback}><MFAChallenge
     onVerified={async()=>{const{data:{session:s}}=await supabase.auth.getSession();setSession(s);setMfaRequired(false)}}
-    onSignOut={async()=>{await supabase.auth.signOut();setSession(null);setUser(null);setMfaRequired(false)}}/>
+    onSignOut={async()=>{await supabase.auth.signOut();setSession(null);setUser(null);setMfaRequired(false)}}/></Suspense>
 
   const running=studies.filter(s=>s.status==='running').length
   const completed=studies.filter(s=>s.status==='completed').length
@@ -1379,6 +1365,7 @@ export default function App() {
       </div>
     </header>
     <div style={{maxWidth:820,width:'100%',margin:'0 auto',padding:'32px 20px'}}>
+      <Suspense fallback={LazyFallback}>
       {tab==='catalogue'&&<DataCatalogue session={session}/>}
       {tab==='applications'&&<MyApplications session={session} onBrowseCatalogue={()=>setTab('catalogue')} onLaunchStudy={req=>{setTreInitialCohort(req);setTab('tre')}}/>}
       {tab==='tre'&&<TREWorkspace session={session} initialCohort={treInitialCohort} studies={studies} onLaunchStudy={()=>setTab('launch')}/>}
@@ -1407,6 +1394,7 @@ export default function App() {
       {tab==='connectors'&&<DataConnectors session={session}/>}
       {tab==='aria'&&<ARIADashboard studies={studies} session={session} onOpenStudy={id=>{setSelected(id);setTab('studies');setStudyInitialTab('compliance')}}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
+      </Suspense>
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#F5F5F7;color:#1D1D1F;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale} input,select,button,textarea{font-family:inherit} input:focus,select:focus,textarea:focus{border-color:#007AFF !important;box-shadow:0 0 0 3px rgba(0,122,255,0.12) !important;outline:none} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:99px} a{color:#007AFF}`}</style>
   </div>
