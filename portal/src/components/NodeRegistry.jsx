@@ -451,8 +451,6 @@ function SetupGuide() {
 INSTITUTION_NAME=Your Institution Full Name
 INSTITUTION_DOMAIN=youruni.ac.uk
 CONTACT_EMAIL=research-it@youruni.ac.uk
-NODE_HOST=your.public.ip.or.hostname
-NODE_PORT=8080
 NODE_REGISTRATION_SECRET=<ask UndosaTech team>
 GPU_AVAILABLE=false
 MAX_SAMPLES=10000
@@ -465,7 +463,8 @@ TAGS=radiology,pathology`;
         <h2 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 700, color: "#f0f0f5", letterSpacing: "-0.02em" }}>Institution Setup Guide</h2>
         <p style={{ margin: 0, fontSize: 13, color: "#6E6E73", lineHeight: 1.6 }}>
           Deploy an FL node on your institution's infrastructure. Raw patient data never leaves your server —
-          only encrypted model weight updates are sent to the orchestrator.
+          only encrypted model weight updates are sent to the orchestrator. Outbound-only: no inbound ports, no VPN, no public IP.
+          {' '}<a href="https://undosatech.com/node-deployment" target="_blank" rel="noreferrer" style={{ color: "#007AFF" }}>Full deployment guide for IT reviewers →</a>
         </p>
       </div>
 
@@ -479,8 +478,7 @@ TAGS=radiology,pathology`;
         <ul style={{ margin: 0, paddingLeft: 18, color: "#8E8E93", fontSize: 13, lineHeight: 2 }}>
           <li>Docker Engine ≥ 20.10 and Docker Compose ≥ 2.0</li>
           <li>Outbound internet access to <code style={{ color: "#e2e8f0" }}>undosatech-production.up.railway.app</code> (HTTPS port 443)</li>
-          <li>A static public IP or hostname (for the orchestrator to route training assignments)</li>
-          <li>Port {8080} open for inbound Flower gRPC connections (or your chosen NODE_PORT)</li>
+          <li>No inbound firewall changes — the node makes outbound connections only and polls for training assignments</li>
         </ul>
       </>)}
 

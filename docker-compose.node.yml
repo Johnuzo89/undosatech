@@ -2,6 +2,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # UndosaTech FL Node — institutions run this on their own infrastructure.
 #
+# NETWORK POSTURE: outbound-only. The node opens no inbound ports and needs no
+# firewall changes beyond outbound HTTPS/gRPC to UndosaTech (see the egress
+# allow-list in the deployment guide: https://undosatech.com/node-deployment).
+# Patient-level data mounted into the container never leaves this machine —
+# only model weight updates and training metrics are transmitted.
+#
 # SETUP (institution IT team):
 #   1. Copy this file and create a .env.node file (see bottom of this file)
 #   2. docker compose -f docker-compose.node.yml up -d
@@ -28,8 +34,7 @@ services:
     environment:
       ORCHESTRATOR_URL: "https://undosatech-production.up.railway.app"
 
-    ports:
-      - "${NODE_PORT:-8080}:8080"   # Flower gRPC — must be reachable from internet
+    # No `ports:` section — the node makes outbound connections only.
 
     volumes:
       - node_credentials:/app      # persists api_key across container restarts
@@ -55,8 +60,6 @@ volumes:
 #   INSTITUTION_NAME=King's College Hospital NHS Foundation Trust
 #   INSTITUTION_DOMAIN=kch.nhs.uk
 #   CONTACT_EMAIL=research-it@kch.nhs.uk
-#   NODE_HOST=203.0.113.10
-#   NODE_PORT=8080
 #   NODE_REGISTRATION_SECRET=<ask UndosaTech team for this>
 #   GPU_AVAILABLE=false
 #   MAX_SAMPLES=10000

@@ -838,8 +838,13 @@ async def download_compliance_pack(study_id: str, authorization: Optional[str] =
 
 
 @app.get("/studies/{study_id}/flower-address")
-async def get_flower_address(study_id: str, authorization: Optional[str] = Header(None)):
-    _require_user(authorization)
+async def get_flower_address(
+    study_id: str,
+    authorization: Optional[str] = Header(None),
+    x_node_id: Optional[str] = Header(None),
+):
+    from orchestrator.nodes import _require_user_or_node
+    _require_user_or_node(x_node_id, authorization)
     host = os.environ.get("RAILWAY_PUBLIC_DOMAIN", os.environ.get("FLOWER_PUBLIC_HOST", "localhost"))
     return {
         "server_address": f"{host}:{FLOWER_PORT}",

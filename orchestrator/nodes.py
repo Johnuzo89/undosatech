@@ -23,6 +23,15 @@ def _hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+def _require_user_or_node(node_id: Optional[str], authorization: Optional[str]):
+    """Allow either a signed-in portal user or the node itself (Bearer <node api key>
+    plus its node_id). Returns the user object, or None when node-authenticated."""
+    if node_id and authorization and authorization.startswith("Bearer "):
+        if _verify_node_api_key(node_id, authorization.split(" ", 1)[1]):
+            return None
+    return _require_user(authorization)
+
+
 def _verify_node_api_key(node_id: str, api_key: str) -> bool:
     if not supabase_admin:
         return True
@@ -311,7 +320,7 @@ async def get_node_invitations(
     status: Optional[str] = Query(None),
     authorization: Optional[str] = Header(None),
 ):
-    _require_user(authorization)
+    _require_user_or_node(node_id, authorization)
     if not supabase_admin:
         return []
     try:

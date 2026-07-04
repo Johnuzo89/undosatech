@@ -475,7 +475,7 @@ if __name__ == "__main__":
                 resp = requests.get(
                     f"{ORCHESTRATOR_URL}/nodes/{NODE_ID}/invitations",
                     params={"status": "accepted"},
-                    headers={"Authorization": f"Bearer {_api_key}"},
+                    headers={"Authorization": f"Bearer {_api_key}", "X-Node-Id": NODE_ID},
                     timeout=8,
                 )
                 if resp.status_code == 200:
@@ -485,7 +485,7 @@ if __name__ == "__main__":
                         if study_id and not _training_active:
                             addr_resp = requests.get(
                                 f"{ORCHESTRATOR_URL}/studies/{study_id}/flower-address",
-                                headers={"Authorization": f"Bearer {_api_key}"},
+                                headers={"Authorization": f"Bearer {_api_key}", "X-Node-Id": NODE_ID},
                                 timeout=8,
                             )
                             if addr_resp.status_code == 200:
