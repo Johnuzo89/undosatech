@@ -44,6 +44,7 @@ from orchestrator.lineage import record_lineage, router as lineage_router
 from orchestrator.fhir_adapter import router as fhir_router
 from orchestrator.analytics import router as analytics_router
 from orchestrator.observability import MetricsMiddleware, router as observability_router
+from orchestrator.ratelimit import RateLimitMiddleware
 
 
 # ── Compliance text ───────────────────────────────────────────────────────────
@@ -399,6 +400,9 @@ def _gpu_queue_watcher():
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(title="UndosaTech API", version="7.0.0", lifespan=lifespan)
 
+# Innermost first: rate-limit rejections still pass back out through metrics
+# recording and CORS header injection.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(MetricsMiddleware)
 
 
