@@ -94,6 +94,7 @@ jobs:
             echo "::warning::VERCEL_TOKEN secret not set — skipping Vercel deploy"
             exit 0
           fi
+          npm ci
           npx -y vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           npx -y vercel build --prod --token="$VERCEL_TOKEN"
           npx -y vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
