@@ -520,7 +520,7 @@ function NodeHealth({ session }) {
     try {
       const res = await fetch(`${API}/nodes/list`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       if (res.ok) setNodes(await res.json())
-    } catch (_) {}
+    } catch {}
     finally { setLoading(false) }
   }, [session])
 
@@ -871,7 +871,7 @@ function CohortAdmin({ session }) {
     try {
       const res = await fetch(`${API}/admin/cohorts`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       if (res.ok) setCohorts(await res.json())
-    } catch (_) {}
+    } catch {}
     setLoading(false)
   }, [session])
 
@@ -889,7 +889,7 @@ function CohortAdmin({ session }) {
       })
       await load()
       flash('Updated.')
-    } catch (_) { flash('Update failed.') }
+    } catch { flash('Update failed.') }
     setBusy(b => ({ ...b, [id]: false }))
   }
 
@@ -899,7 +899,7 @@ function CohortAdmin({ session }) {
     try {
       await fetch(`${API}/admin/cohorts/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${session.access_token}` } })
       await load(); flash('Archived.')
-    } catch (_) { flash('Archive failed.') }
+    } catch { flash('Archive failed.') }
     setBusy(b => ({ ...b, [id]: false }))
   }
 
@@ -1033,14 +1033,14 @@ export default function AdminDashboard({ session }) {
     try {
       const res = await fetch(`${API}/admin/stats`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       if (res.ok) setStats(await res.json())
-    } catch (_) {}
+    } catch {}
   }, [session])
 
   const fetchRequests = useCallback(async () => {
     try {
       const res = await fetch(`${API}/admin/access-requests`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       if (res.ok) setRequests(await res.json())
-    } catch (_) {}
+    } catch {}
   }, [session])
 
   const fetchStudies = useCallback(async () => {
@@ -1048,7 +1048,7 @@ export default function AdminDashboard({ session }) {
     try {
       const res = await fetch(`${API}/admin/studies`, { headers: { Authorization: `Bearer ${session.access_token}` } })
       if (res.ok) setStudies(await res.json())
-    } catch (_) {}
+    } catch {}
     finally { setStudiesLoading(false) }
   }, [session])
 

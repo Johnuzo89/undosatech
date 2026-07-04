@@ -38,6 +38,9 @@ function InviteModal({ studyId, session, existingNodeIds, onClose, onInvited }) 
       .then(d => setNodes(Array.isArray(d) ? d.filter(n => !existingNodeIds.includes(n.node_id)) : []))
       .catch(() => setNodes([]))
       .finally(() => setLoading(false));
+    // Mount-only fetch: the modal remounts on open, and existingNodeIds is a
+    // fresh array each parent render — depending on it would refetch in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);

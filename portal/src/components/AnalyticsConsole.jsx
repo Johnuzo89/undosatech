@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 
 const API = import.meta.env.VITE_API_URL || 'https://undosatech-production.up.railway.app'
 const card = { background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 16 }
@@ -9,7 +9,7 @@ export default function AnalyticsConsole({ session }) {
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
-  const headers = { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' }
+  const headers = useMemo(() => ({ Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' }), [session?.access_token])
 
   const loadTables = useCallback(async () => {
     try {
@@ -17,10 +17,10 @@ export default function AnalyticsConsole({ session }) {
       if (r.ok) {
         const d = await r.json()
         setTables(d.tables || [])
-        if (!sql && d.tables?.length) setSql(`SELECT * FROM ${d.tables[0].table} LIMIT 20`)
+        if (d.tables?.length) setSql(prev => prev || `SELECT * FROM ${d.tables[0].table} LIMIT 20`)
       }
-    } catch (_) {}
-  }, [session])
+    } catch {}
+  }, [headers])
 
   useEffect(() => { loadTables() }, [loadTables])
 

@@ -98,7 +98,7 @@ function LiveLogs({ studyId, session, isRunning }) {
         setLogs(prev => [...prev, ...data.logs]);
         setLastId(data.last_id);
       }
-    } catch (e) { /* swallow */ }
+    } catch { /* swallow */ }
   }, [studyId, session, lastId]);
 
   useEffect(() => { fetchLogs(); }, []); // eslint-disable-line
@@ -152,7 +152,7 @@ function StudyCard({ study, session, onStop, onDelete }) {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         if (res.ok) setFullStudy(await res.json());
-      } catch (e) { /* swallow */ }
+      } catch { /* swallow */ }
     };
     fetchFull();
     if (isRunning) {

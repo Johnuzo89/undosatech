@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -193,7 +193,7 @@ function ResultCard({ result, cohortName }) {
   )
 }
 
-export default function DPQueryConsole({ session }) {
+export default function DPQueryConsole() {
   const [cohorts,      setCohorts]      = useState([])
   const [selected,     setSelected]     = useState(null)
   const [fields,       setFields]       = useState({})
@@ -202,7 +202,7 @@ export default function DPQueryConsole({ session }) {
   const [epsilon,      setEpsilon]      = useState(1.0)
   const [bins,         setBins]         = useState(10)
   const [catValue,     setCatValue]     = useState('')
-  const [nSamples,     setNSamples]     = useState(500)
+  const nSamples = 500
   const [results,      setResults]      = useState([])
   const [loading,      setLoading]      = useState(false)
   const [error,        setError]        = useState(null)
@@ -232,7 +232,6 @@ export default function DPQueryConsole({ session }) {
   }, [selected])
 
   const fieldMeta     = fields[field] || {}
-  const isCategorical = fieldMeta.type === 'categorical'
   const needsCat      = queryType === 'proportion'
   const needsBins     = queryType === 'histogram'
   const budgetLeft    = BUDGET_TOTAL - budgetSpent
@@ -270,9 +269,6 @@ export default function DPQueryConsole({ session }) {
 
   const numericFields     = Object.entries(fields).filter(([, v]) => v.type === 'numeric')
   const categoricalFields = Object.entries(fields).filter(([, v]) => v.type === 'categorical')
-  const availableFields   = (isCategorical || needsCat)
-    ? (queryType === 'mean' || queryType === 'histogram' ? numericFields : [...numericFields, ...categoricalFields])
-    : (queryType === 'mean' || queryType === 'histogram' ? numericFields : [...numericFields, ...categoricalFields])
 
   const inp = {
     padding: '9px 13px', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 9,
@@ -436,7 +432,7 @@ export default function DPQueryConsole({ session }) {
             </div>
           )}
 
-          {results.map((r, i) => (
+          {results.map(r => (
             <ResultCard key={r.ts} result={r} cohortName={r.cohortName} />
           ))}
         </div>

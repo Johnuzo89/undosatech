@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -72,7 +72,7 @@ function PreviewTable({ rows, columns }) {
   )
 }
 
-export default function SyntheticDataGenerator({ session }) {
+export default function SyntheticDataGenerator() {
   const [cohorts,   setCohorts]   = useState([])
   const [selected,  setSelected]  = useState(null)
   const [n,         setN]         = useState(200)
@@ -141,11 +141,6 @@ export default function SyntheticDataGenerator({ session }) {
     setDownloading(false)
   }
 
-  const inp = {
-    padding: '9px 13px', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 9,
-    fontSize: 13, outline: 'none', fontFamily: 'inherit', background: 'rgba(0,0,0,0.03)',
-    color: '#1D1D1F', boxSizing: 'border-box',
-  }
 
   return (
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif' }}>

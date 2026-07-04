@@ -26,9 +26,14 @@ export default [
       'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
       'no-empty': ['error', { allowEmptyCatch: true }],
       'react-refresh/only-export-components': 'off',
-      // React-Compiler-era advisories — real cleanups, but not CI blockers
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/purity': 'warn',
+      // React-Compiler adoption advisories, intentionally off: this app uses
+      // the classic fetch-on-mount pattern (setLoading(true) inside effects)
+      // throughout, and renders relative timestamps (Date.now()) that refresh
+      // with each poll-driven re-render. Restructuring for the compiler would
+      // be high-churn with no user-visible benefit. Revisit if the React
+      // Compiler is adopted.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off',
       'react-hooks/immutability': 'warn',
       'react-hooks/refs': 'warn',
       'react-hooks/exhaustive-deps': 'warn',

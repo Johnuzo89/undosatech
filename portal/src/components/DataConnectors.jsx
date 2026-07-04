@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 const API = import.meta.env.VITE_API_URL || 'https://undosatech-production.up.railway.app';
 
@@ -209,11 +209,11 @@ function OMOPWizard({ session, onSaved, onCancel }) {
   const authH = { Authorization: `Bearer ${session?.access_token}` };
 
   useEffect(() => {
-    fetch(`${API}/integrations/omop/scenarios`, { headers: authH })
+    fetch(`${API}/integrations/omop/scenarios`, { headers: { Authorization: `Bearer ${session?.access_token}` } })
       .then(r => r.json())
       .then(d => Array.isArray(d) && setScenarios(d))
       .catch(() => {});
-  }, []);
+  }, [session?.access_token]);
 
   const validateFiles = async () => {
     if (!files.length) { setErr('Select at least one OMOP CSV file'); return; }
@@ -412,7 +412,7 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
       const r = await fetch(`${API}/integrations/openneuro/dataset/${ds.id}/files?version=${ds.version}`, { headers: authH });
       const d = await r.json();
       setPanelData(d.files || []);
-    } catch (e) { setPanelData([]); }
+    } catch { setPanelData([]); }
     finally { setPanelLoading(false); }
   };
 
@@ -422,7 +422,7 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
       const r = await fetch(`${API}/integrations/openneuro/dataset/${ds.id}/participants?version=${ds.version}`, { headers: authH });
       const d = await r.json();
       setPanelData(d.participants || []);
-    } catch (e) { setPanelData([]); }
+    } catch { setPanelData([]); }
     finally { setPanelLoading(false); }
   };
 
@@ -442,12 +442,6 @@ function OpenNeuroWizard({ session, onSaved, onCancel }) {
     finally { setSaving(null); }
   };
 
-  const fmtBytes = (b) => {
-    if (!b) return '—';
-    if (b > 1e9) return (b / 1e9).toFixed(1) + ' GB';
-    if (b > 1e6) return (b / 1e6).toFixed(1) + ' MB';
-    return (b / 1e3).toFixed(0) + ' KB';
-  };
 
   const panelHeaders = panelData && panelData.length > 0 ? Object.keys(panelData[0]) : [];
 
@@ -588,7 +582,7 @@ export default function DataConnectors({ session }) {
   const [wizard,      setWizard]      = useState(null);  // 'redcap' | 'omop' | 'openneuro' | null
   const [deleting,    setDeleting]    = useState(null);
 
-  const authH = { Authorization: `Bearer ${session?.access_token}` };
+  const authH = useMemo(() => ({ Authorization: `Bearer ${session?.access_token}` }), [session?.access_token]);
 
   const loadConnections = () => {
     setLoading(true);
@@ -598,7 +592,7 @@ export default function DataConnectors({ session }) {
       .catch(() => setLoading(false));
   };
 
-  useEffect(loadConnections, [session?.access_token]);
+  useEffect(loadConnections, [authH]);
 
   const deleteConn = async (id) => {
     setDeleting(id);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, createContext, useContext, lazy, Suspense } from 'react'
+import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { isInstitutional } from './lib/institutionalDomains'
 import { ARCH_INFO, ARCHS, DATASETS, PRESETS } from './lib/studyConfig'
@@ -92,7 +92,6 @@ function ResetPasswordScreen({ onDone }) {
     setDone(true); setBusy(false)
   }
 
-  const inp = { ...S.inp, marginBottom: 14 }
   const btnPrimary = { width:'100%', padding:'13px 0', background: busy?'rgba(0,122,255,0.5)':'#007AFF', color:'#fff', borderRadius:12, fontWeight:600, fontSize:15, cursor: busy?'not-allowed':'pointer', border:'none', marginBottom:10, letterSpacing:'-0.01em', boxShadow: busy?'none':'0 2px 8px rgba(0,122,255,0.3)' }
 
   return (
@@ -201,7 +200,7 @@ function AuthScreen({ onAuth }) {
     }
     const institutional = isInstitutional(form.email)
     if (!institutional) { setMode('apply'); setBusy(false); return }
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: form.email, password: form.password,
       options: { data: { full_name: form.name, institution: form.institution, role: form.role, account_type: 'institutional' } }
     })
@@ -784,9 +783,11 @@ function StudyView({ studyId, onBack, session, isAdmin, initialTab = 'live' }) {
       poll()
     },4000)
     return()=>clearInterval(id)
+    // Poll loop is intentionally keyed to the study only; `job` is read via
+    // closure so a fresh interval isn't created every 4s round.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[studyId])
   const rounds = (job?.round_results?.length ? job.round_results : null) || job?.rounds || []
-  const safeNodes = Array.isArray(job?.nodes) ? job.nodes : []
   const chart=rounds.map(r=>({round:`R${r.round||r.round_number}`,acc:+((r.global_accuracy||r.accuracy||0)*100).toFixed(2),loss:+(r.global_loss||r.loss||0).toFixed(4)}))
   const lastRound=rounds[rounds.length-1]
   const archInfo=ARCH_INFO[job?.architecture||job?.model]||{}
@@ -937,7 +938,7 @@ function StudiesList({ studies, onSelect }) {
 
 // ── ARIA DASHBOARD ────────────────────────────────────────────────────────────
 
-function ARIADashboard({ studies, session, onOpenStudy }) {
+function ARIADashboard({ studies, onOpenStudy }) {
   const statusColor = s => s==='completed'?'#10B981':s==='running'?'#007AFF':s==='failed'?'#EF4444':'#9CA3AF'
   const statusLabel = s => s==='completed'?'Completed':s==='running'?'Running':s==='failed'?'Failed':'Pending'
   return (
@@ -1058,7 +1059,7 @@ export default function App() {
     }catch{setOnline(false)}
   },[session])
 
-  useEffect(()=>{ if(user) refresh() },[user])
+  useEffect(()=>{ if(user) refresh() },[user,refresh])
   useEffect(()=>{ const id=setInterval(()=>{ if(user) refresh() },6000); return()=>clearInterval(id) },[user,refresh])
 
   const signOut = async()=>{ await supabase.auth.signOut(); setSession(null); setUser(null) }
@@ -1119,8 +1120,8 @@ export default function App() {
       {tab==='catalogue'&&<DataCatalogue session={session}/>}
       {tab==='applications'&&<MyApplications session={session} onBrowseCatalogue={()=>setTab('catalogue')} onLaunchStudy={req=>{setTreInitialCohort(req);setTab('tre')}}/>}
       {tab==='tre'&&<TREWorkspace session={session} initialCohort={treInitialCohort} studies={studies} onLaunchStudy={()=>setTab('launch')}/>}
-      {tab==='synthetic'&&<SyntheticDataGenerator session={session}/>}
-      {tab==='dpquery'&&<DPQueryConsole session={session}/>}
+      {tab==='synthetic'&&<SyntheticDataGenerator/>}
+      {tab==='dpquery'&&<DPQueryConsole/>}
       {tab==='analytics'&&<AnalyticsConsole session={session}/>}
       {tab==='security'&&<SecuritySettings/>}
       {tab==='launch'&&!selected&&<LaunchForm onLaunched={(id,hadInvitations)=>{setSelected(id);setTab('studies');setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
@@ -1142,7 +1143,7 @@ export default function App() {
       </>}
       {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
       {tab==='connectors'&&<DataConnectors session={session}/>}
-      {tab==='aria'&&<ARIADashboard studies={studies} session={session} onOpenStudy={id=>{setSelected(id);setTab('studies');setStudyInitialTab('compliance')}}/>}
+      {tab==='aria'&&<ARIADashboard studies={studies} onOpenStudy={id=>{setSelected(id);setTab('studies');setStudyInitialTab('compliance')}}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
       </Suspense>
     </div>
