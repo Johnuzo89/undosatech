@@ -98,5 +98,16 @@ jobs:
           fi
           npm --prefix portal ci
           npx -y vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          # Sensitive-type env vars pull as empty strings and would ship a
+          # white-screen bundle (createClient(undefined) throws). Fail fast.
+          if ! grep -qE '^VITE_SUPABASE_URL="?https' .vercel/.env.production.local; then
+            echo "::error::VITE_SUPABASE_URL is empty in pulled env — check the Vercel env vars are not marked Sensitive"
+            exit 1
+          fi
           npx -y vercel build --prod --token="$VERCEL_TOKEN"
+          # Belt and braces: the built entry must contain the inlined Supabase URL
+          if ! grep -rq "supabase.co" .vercel/output/static/assets/index-*.js; then
+            echo "::error::Built bundle is missing VITE_ env values — refusing to deploy a broken build"
+            exit 1
+          fi
           npx -y vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
