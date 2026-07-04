@@ -9,3 +9,7 @@ portal/node_modules/
 .env
 .claude/
 portal/dist/
+.vercel
+.env*
+.vercel/
+.env*.local
