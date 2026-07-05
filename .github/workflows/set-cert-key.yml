@@ -1,0 +1,28 @@
+# One-off maintenance workflow: generate an Ed25519 signing seed and set it as
+# CERT_SIGNING_KEY on the Railway service. Refuses to overwrite an existing key
+# (rotation would invalidate previously issued certificates). Delete after use.
+name: set-cert-key
+on:
+  workflow_dispatch:
+
+jobs:
+  set-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set CERT_SIGNING_KEY on Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || 'undosatech' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret not set"; exit 1
+          fi
+          if npx -y @railway/cli variables --service "$RAILWAY_SERVICE" --kv | cut -d= -f1 | grep -qx "CERT_SIGNING_KEY"; then
+            echo "CERT_SIGNING_KEY already set — refusing to overwrite (rotation invalidates issued certificates)."
+            exit 0
+          fi
+          KEY="$(openssl rand -hex 32)"
+          echo "::add-mask::$KEY"
+          npx -y @railway/cli variables --service "$RAILWAY_SERVICE" --set "CERT_SIGNING_KEY=$KEY"
+          echo "CERT_SIGNING_KEY set on service '$RAILWAY_SERVICE' (value never logged; visible in Railway dashboard)."
