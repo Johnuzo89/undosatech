@@ -492,10 +492,27 @@ def _load_openneuro_nifti(on_id: str, partition_id: int, num_partitions: int,
 
 
 # ── Model builder ─────────────────────────────────────────────────────────────
-def build_model(num_classes, in_channels, arch="resnet18"):
+def _freeze_backbone(m):
+    """Foundation fine-tuning: freeze everything, then unfreeze the classifier
+    head — the federated rounds only train the head, so institutions with
+    small archives can still fine-tune a large pretrained backbone."""
+    for p in m.parameters():
+        p.requires_grad = False
+    for attr in ("fc", "classifier", "heads", "head"):
+        head = getattr(m, attr, None)
+        if head is not None:
+            for p in head.parameters():
+                p.requires_grad = True
+            break
+    return m
+
+
+def build_model(num_classes, in_channels, arch="resnet18", finetune_mode="full"):
     import torch.nn as nn
     from torchvision import models
-    logger.info(f"Building {arch} · {in_channels}ch → {num_classes} classes")
+    logger.info(f"Building {arch} · {in_channels}ch → {num_classes} classes · finetune={finetune_mode}")
+    if finetune_mode == "head_only":
+        return _freeze_backbone(build_model(num_classes, in_channels, arch, finetune_mode="full"))
 
     def adapt_first_conv(m, in_ch):
         if in_ch != 3:
@@ -854,8 +871,12 @@ def train_thread(
             update_job(dp_enabled=True, dp_noise_multiplier=dp_noise_multiplier,
                        dp_epsilon=dp_epsilon, dp_delta=1e-5)
 
-        node_models = [build_model(num_classes, in_ch, arch).to(device) for _ in range(num_nodes)]
-        node_optims = [optim.Adam(m.parameters(), lr=0.001, weight_decay=1e-4) for m in node_models]
+        finetune_mode = jobs.get(study_id, {}).get("finetune_mode", "full")
+        if finetune_mode == "head_only":
+            log(f"🧬 Foundation fine-tuning — {arch} ImageNet backbone frozen, training classifier head only")
+        node_models = [build_model(num_classes, in_ch, arch, finetune_mode).to(device) for _ in range(num_nodes)]
+        node_optims = [optim.Adam(filter(lambda p: p.requires_grad, m.parameters()),
+                                  lr=0.001, weight_decay=1e-4) for m in node_models]
         schedulers  = [optim.lr_scheduler.CosineAnnealingLR(o, T_max=num_rounds) for o in node_optims]
         multilabel_datasets = ['chestmnist']
         is_multilabel = dataset_name.lower() in multilabel_datasets
@@ -1140,10 +1161,31 @@ def train_thread(
                 action="trained",
                 parent_type="study", parent_id=study_id,
                 metadata={"architecture": arch, "final_accuracy": final_acc,
+                          "finetune_mode": finetune_mode,
                           "storage_key": model_storage_key or str(fp)},
             )
+            if finetune_mode == "head_only":
+                # Foundation provenance: this model derives from a pretrained backbone
+                record_lineage(
+                    "model", f"{study_id}/{arch}_final",
+                    action="finetuned_from_foundation",
+                    parent_type="model", parent_id=f"imagenet1k/{arch}",
+                    metadata={"backbone": "frozen", "head": "trained"},
+                )
         except Exception as e:
             logger.warning(f"[{study_id[:8]}] Lineage record failed: {e}")
+        # Every completed federated model is certified automatically — training
+        # provenance regulators can verify without trusting us (MHRA/FDA AI
+        # provenance expectations).
+        try:
+            from orchestrator.certificates import issue_certificate
+            cert = issue_certificate("model", f"{study_id}/{arch}_final", actor="training-pipeline",
+                                     extra={"final_accuracy": final_acc,
+                                            "dp_noise_multiplier": dp_noise_multiplier,
+                                            "finetune_mode": finetune_mode})
+            log(f"🏅 Verifiable Research Certificate issued: {cert['payload']['cert_id']}")
+        except Exception as e:
+            logger.warning(f"[{study_id[:8]}] Auto-certification failed: {e}")
         logger.info(f"{'═'*60}")
         logger.info(f"[TRAIN DONE] {study_id[:8]} | acc={final_acc:.3f} | loss={final_loss:.4f} | κ={final_cohen_kappa}")
         logger.info(f"{'═'*60}")

@@ -45,6 +45,9 @@ from orchestrator.fhir_adapter import router as fhir_router
 from orchestrator.analytics import router as analytics_router
 from orchestrator.observability import MetricsMiddleware, router as observability_router
 from orchestrator.certificates import router as certificates_router
+from orchestrator.epsilon_ledger import router as epsilon_router
+from orchestrator.evidence_packs import router as evidence_router
+from orchestrator.archive_index import router as archive_index_router
 from orchestrator.ratelimit import RateLimitMiddleware
 
 
@@ -441,6 +444,9 @@ app.include_router(fhir_router)
 app.include_router(analytics_router)
 app.include_router(observability_router)
 app.include_router(certificates_router)
+app.include_router(epsilon_router)
+app.include_router(evidence_router)
+app.include_router(archive_index_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -486,6 +492,7 @@ async def create_study(
     data_retention_days:  Optional[int]   = Form(None),
     ethics_ref:           Optional[str]   = Form(None),
     compute_mode:         str             = Form("cpu"),
+    finetune_mode:        str             = Form("full"),   # full | head_only (freeze backbone)
     file: Optional[UploadFile] = File(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -550,6 +557,7 @@ async def create_study(
             "data_retention_days": data_retention_days or 90,
             "ethics_ref": ethics_ref or "[To be completed by institution]",
             "compute_mode": compute_mode,
+            "finetune_mode": finetune_mode,
         }
     else:
         jobs[study_id] = {
@@ -567,6 +575,7 @@ async def create_study(
             "data_retention_days": data_retention_days or 90,
             "ethics_ref": ethics_ref or "[To be completed by institution]",
             "compute_mode": compute_mode,
+            "finetune_mode": finetune_mode,
         }
 
     try:
@@ -970,6 +979,7 @@ async def dp_query(body: dict = Body(default={}), authorization: Optional[str] =
     """
     user = _require_user(authorization)
     from orchestrator.dp_query import run_query
+    from orchestrator.epsilon_ledger import charge, dataset_key_for_cohort, BudgetExceeded
     cohort         = body.get("cohort", {})
     query_type     = body.get("query_type", "mean")
     field          = body.get("field", "age")
@@ -987,6 +997,14 @@ async def dp_query(body: dict = Body(default={}), authorization: Optional[str] =
             bins=bins,
             category_value=category_value,
         )
+        # Charge the budget only once a result is actually being released —
+        # a failed query discloses nothing, so it must not consume epsilon.
+        try:
+            charge(dataset_key_for_cohort(cohort), epsilon,
+                   actor=getattr(user, "email", None) or str(getattr(user, "id", "unknown")),
+                   context={"query_type": query_type, "field": field, "purpose": "dp_query"})
+        except BudgetExceeded as e:
+            raise HTTPException(403, str(e))
         from orchestrator.sdc import apply_sdc_to_dp_result
         audit("dp-console", "dp_query_executed", {
             "user": getattr(user, "email", None) or str(getattr(user, "id", "unknown")),
@@ -1026,6 +1044,15 @@ async def synthetic_generate(
             raise HTTPException(400, "dp_epsilon must be a positive number")
 
     records = generate_records(cohort=cohort, n=n, dp_epsilon=dp_epsilon)
+
+    if dp_epsilon is not None:
+        # charge only after generation succeeded — nothing released on failure
+        from orchestrator.epsilon_ledger import charge, dataset_key_for_cohort, BudgetExceeded
+        try:
+            charge(dataset_key_for_cohort(cohort), dp_epsilon,
+                   context={"purpose": "synthetic_export", "n": n})
+        except BudgetExceeded as e:
+            raise HTTPException(403, str(e))
 
     if fmt == "csv":
         slug = cohort.get("slug", "cohort")

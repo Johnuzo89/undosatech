@@ -19,6 +19,10 @@ Required environment variables (set in docker-compose.node.yml):
   MAX_SAMPLES               Max local samples to share per round (default: no limit)
   SUPPORTED_MODELS          Comma-separated, e.g. "ResNet-18,ResNet-50,ViT-B/16"
   TAGS                      Comma-separated tags, e.g. "ophthalmology,retinal"
+  ARCHIVE_PATH              Local archive directory to profile (default /data)
+  ARCHIVE_PROFILE           auto | off — allow automatic archive profiling for
+                            the Reactivation Index (aggregate counts only;
+                            no filenames, paths, or pixel data ever leave)
 """
 
 import os, sys, time, json, signal, logging, threading, pathlib
@@ -45,6 +49,8 @@ GPU_AVAILABLE_ENV       = os.environ.get("GPU_AVAILABLE", "auto").strip().lower(
 MAX_SAMPLES_ENV         = os.environ.get("MAX_SAMPLES", "").strip()
 TAGS_ENV                = os.environ.get("TAGS", "").strip()
 SUPPORTED_MODELS_ENV    = os.environ.get("SUPPORTED_MODELS", "").strip()
+ARCHIVE_PATH            = os.environ.get("ARCHIVE_PATH", "/data").strip()
+ARCHIVE_PROFILE         = os.environ.get("ARCHIVE_PROFILE", "auto").strip().lower()
 
 # Persisted credentials (survive container restarts without re-registering)
 CREDS_FILE = pathlib.Path("/app/.node_credentials.json")
@@ -455,6 +461,106 @@ def run_flower_client(server_address: str):
         _current_study_id = None
 
 
+# ── Archive profiling (Reactivation Index) ────────────────────────────────────
+# Scans ARCHIVE_PATH locally and reports AGGREGATES ONLY: counts per modality,
+# year range from file mtimes, total volume. No filename, path, or pixel ever
+# leaves the institution. Runs only when the orchestrator assigns it and
+# ARCHIVE_PROFILE != "off".
+
+_MODALITY_EXTENSIONS = {
+    ".dcm": "DICOM", ".dicom": "DICOM",
+    ".nii": "NIfTI", ".gz": "NIfTI",          # .nii.gz handled below
+    ".e2e": "OCT (Heidelberg)", ".fds": "OCT (Topcon)", ".fda": "OCT (Topcon)",
+    ".oct": "OCT", ".img": "Fundus/raw",
+    ".png": "2D image", ".jpg": "2D image", ".jpeg": "2D image",
+    ".tif": "2D image", ".tiff": "2D image", ".bmp": "2D image",
+    ".edf": "EEG/physiology", ".bdf": "EEG/physiology",
+    ".mha": "Volume (MetaImage)", ".mhd": "Volume (MetaImage)", ".nrrd": "Volume (NRRD)",
+}
+_MAX_PROFILE_FILES = 2_000_000
+
+
+def _classify_file(name: str) -> str | None:
+    lower = name.lower()
+    if lower.endswith(".nii.gz"):
+        return "NIfTI"
+    ext = pathlib.Path(lower).suffix
+    if ext == ".gz":
+        return None
+    return _MODALITY_EXTENSIONS.get(ext)
+
+
+def _profile_archive() -> dict | None:
+    root = pathlib.Path(ARCHIVE_PATH)
+    if not root.is_dir():
+        log.warning("ARCHIVE_PATH %s does not exist — skipping profile", ARCHIVE_PATH)
+        return None
+    log.info("Profiling archive at %s (aggregates only, nothing leaves this machine) …", root)
+    modalities: dict = {}
+    total_files = total_bytes = dirs_scanned = 0
+    earliest = latest = None
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirs_scanned += 1
+        for fname in filenames:
+            modality = _classify_file(fname)
+            if not modality:
+                continue
+            total_files += 1
+            modalities[modality] = modalities.get(modality, 0) + 1
+            try:
+                st = os.stat(os.path.join(dirpath, fname))
+                total_bytes += st.st_size
+                yr = time.gmtime(st.st_mtime).tm_year
+                earliest = yr if earliest is None else min(earliest, yr)
+                latest = yr if latest is None else max(latest, yr)
+            except OSError:
+                continue
+            if total_files >= _MAX_PROFILE_FILES:
+                log.warning("Profile capped at %d files", _MAX_PROFILE_FILES)
+                break
+        else:
+            continue
+        break
+    log.info("Archive profile: %d files across %d modalities (%.1f GB)",
+             total_files, len(modalities), total_bytes / 1e9)
+    return {
+        "node_id":            NODE_ID,
+        "scanned_files":      total_files,
+        "modalities":         modalities,
+        "year_range":         [earliest, latest] if earliest else None,
+        "total_bytes":        total_bytes,
+        "dirs_scanned":       dirs_scanned,
+        "archive_path_label": os.environ.get("ARCHIVE_LABEL", "primary-archive"),
+    }
+
+
+def _handle_node_tasks():
+    """Poll orchestrator-assigned tasks; auto-run archive profiling on request."""
+    if ARCHIVE_PROFILE == "off" or not _api_key:
+        return
+    resp = requests.get(
+        f"{ORCHESTRATOR_URL}/nodes/{NODE_ID}/tasks",
+        headers={"Authorization": f"Bearer {_api_key}", "X-Node-Id": NODE_ID},
+        timeout=8,
+    )
+    if resp.status_code != 200:
+        return
+    for task in resp.json():
+        if task.get("task_type") == "profile_archive":
+            profile = _profile_archive()
+            if profile:
+                r = requests.post(
+                    f"{ORCHESTRATOR_URL}/index/profile", json=profile,
+                    headers={"Authorization": f"Bearer {_api_key}", "X-Node-Id": NODE_ID},
+                    timeout=15,
+                )
+                if r.status_code == 200:
+                    log.info("Archive profile indexed ✓ (%s)", r.json().get("jurisdiction"))
+                else:
+                    log.warning("Profile submission failed: %s %s", r.status_code, r.text[:200])
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     _validate_config()
@@ -470,6 +576,10 @@ if __name__ == "__main__":
 
     while not _shutdown.is_set():
         _shutdown.wait(60)
+        try:
+            _handle_node_tasks()
+        except Exception as e:
+            log.warning("Node task poll failed: %s", e)
         try:
             if _api_key:
                 resp = requests.get(

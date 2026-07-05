@@ -43,7 +43,7 @@ CERTS_PATH = Path("certificates.jsonl")
 CERT_VERSION = "1.0"
 _GENESIS_CERT_HASH = "0" * 64
 
-CERTIFIABLE_TYPES = {"study", "model", "synthetic_export", "query_result", "analytics_result"}
+CERTIFIABLE_TYPES = {"study", "model", "synthetic_export", "query_result", "analytics_result", "evidence_pack"}
 
 _issue_lock = threading.Lock()
 

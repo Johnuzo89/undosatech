@@ -104,15 +104,17 @@ _DISEASE_FIELDS = {
 # ── Core generator ────────────────────────────────────────────────────────────
 
 class _Rng:
-    """Thin wrapper so disease field generators can call rng.normal() etc."""
+    """Thin wrapper so disease field generators can call rng.normal() etc.
+    Returns numpy scalars (never plain int/float) so .clip() is always
+    available — numpy 2.x returns bare Python floats from Generator draws."""
     def __init__(self, seed):
         self._rng = np.random.default_rng(seed)
 
-    def normal(self, mu, sigma):      return self._rng.normal(mu, sigma)
-    def exponential(self, scale):     return self._rng.exponential(scale)
-    def binomial(self, n, p):         return int(self._rng.binomial(n, p))
-    def poisson(self, lam):           return int(self._rng.poisson(lam))
-    def negative_binomial(self, n, p): return int(self._rng.negative_binomial(n, p))
+    def normal(self, mu, sigma):      return np.float64(self._rng.normal(mu, sigma))
+    def exponential(self, scale):     return np.float64(self._rng.exponential(scale))
+    def binomial(self, n, p):         return np.int64(self._rng.binomial(n, p))
+    def poisson(self, lam):           return np.int64(self._rng.poisson(lam))
+    def negative_binomial(self, n, p): return np.int64(self._rng.negative_binomial(n, p))
     def choice(self, arr, p=None):    return self._rng.choice(arr, p=p)
 
 

@@ -157,6 +157,13 @@ async def node_heartbeat(req: NodeHeartbeatRequest):
         "node_id": req.node_id, "latency_ms": req.latency_ms,
         "training_active": req.training_active, "current_study_id": req.current_study_id,
     }).execute()
+    # Reactivation Index: real institutional nodes get archive-profiling tasks
+    # assigned automatically — no human in the loop.
+    try:
+        from orchestrator.archive_index import maybe_assign_profiling
+        maybe_assign_profiling(req.node_id)
+    except Exception as e:
+        logger.warning(f"Archive profiling auto-assignment failed for {req.node_id}: {e}")
     return {"status": "ok", "server_time": now}
 
 

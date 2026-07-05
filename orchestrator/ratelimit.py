@@ -26,6 +26,9 @@ LIMITS = [
     ("/auth/forgot-password",  5, 300),
     ("/certificates/issue",   20, 60),
     ("/certificates/",        60, 60),   # public fetch/verify — generous but bounded
+    ("/evidence/pack",        10, 60),
+    ("/index/profile",        10, 60),
+    ("/index/summary",        60, 60),   # public shop window
 ]
 DEFAULT_LIMIT = (600, 60)  # shared budget for all other routes per client
 EXEMPT_PATHS = ("/health",)

@@ -20,7 +20,7 @@ router = APIRouter()
 
 LINEAGE_PATH = Path("lineage_log.jsonl")
 
-ENTITY_TYPES = {"dataset", "cohort", "study", "model", "synthetic_export", "query_result", "analytics_result"}
+ENTITY_TYPES = {"dataset", "cohort", "study", "model", "synthetic_export", "query_result", "analytics_result", "evidence_pack", "archive_profile"}
 
 
 def record_lineage(
