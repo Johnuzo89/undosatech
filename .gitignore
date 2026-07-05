@@ -13,3 +13,4 @@ portal/dist/
 .env*
 .vercel/
 .env*.local
+.cert_signing_key

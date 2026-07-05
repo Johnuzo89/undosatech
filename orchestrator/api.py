@@ -44,6 +44,7 @@ from orchestrator.lineage import record_lineage, router as lineage_router
 from orchestrator.fhir_adapter import router as fhir_router
 from orchestrator.analytics import router as analytics_router
 from orchestrator.observability import MetricsMiddleware, router as observability_router
+from orchestrator.certificates import router as certificates_router
 from orchestrator.ratelimit import RateLimitMiddleware
 
 
@@ -439,6 +440,7 @@ app.include_router(lineage_router)
 app.include_router(fhir_router)
 app.include_router(analytics_router)
 app.include_router(observability_router)
+app.include_router(certificates_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

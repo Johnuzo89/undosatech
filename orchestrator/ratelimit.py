@@ -24,6 +24,8 @@ LIMITS = [
     ("/analytics/query",      30, 60),
     ("/fhir/bundle",          20, 60),
     ("/auth/forgot-password",  5, 300),
+    ("/certificates/issue",   20, 60),
+    ("/certificates/",        60, 60),   # public fetch/verify — generous but bounded
 ]
 DEFAULT_LIMIT = (600, 60)  # shared budget for all other routes per client
 EXEMPT_PATHS = ("/health",)
