@@ -1007,6 +1007,37 @@ function ARIADashboard({ studies, onOpenStudy }) {
   )
 }
 
+// ── ADMIN MFA GATE ────────────────────────────────────────────────────────────
+// Admin tools require AAL2: an enrolled authenticator verified this session.
+function AdminGate({ session, onSetupMfa, onRequireMfa, children }) {
+  const [level, setLevel] = useState(undefined)
+  useEffect(() => {
+    let on = true
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      .then(({ data }) => { if (on) setLevel(data || null) })
+      .catch(() => { if (on) setLevel(null) })
+    return () => { on = false }
+  }, [session])
+
+  if (level === undefined) return <div style={{ color: '#8E8E93', fontSize: 13, padding: 40, textAlign: 'center' }}>Checking security level…</div>
+  if (level?.currentLevel === 'aal2') return children
+
+  const hasFactor = level?.nextLevel === 'aal2'
+  return (
+    <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 16, padding: '48px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', maxWidth: 480, margin: '40px auto' }}>
+      <div style={{ fontSize: 40, marginBottom: 14 }}>🔐</div>
+      <div style={{ fontSize: 17, fontWeight: 700, color: '#1D1D1F', marginBottom: 8 }}>Admin requires two-factor authentication</div>
+      <div style={{ fontSize: 13, color: '#6E6E73', lineHeight: 1.6, marginBottom: 22 }}>
+        Administrative tools can approve nodes, suspend institutions, and read platform-wide metrics —
+        so they need AAL2 assurance: your password plus a verified authenticator code this session.
+      </div>
+      {hasFactor
+        ? <button onClick={onRequireMfa} style={{ padding: '10px 24px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none', background: '#007AFF', color: '#fff' }}>Verify with your authenticator</button>
+        : <button onClick={onSetupMfa} style={{ padding: '10px 24px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none', background: '#007AFF', color: '#fff' }}>Set up 2FA in Security</button>}
+    </div>
+  )
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -1014,7 +1045,8 @@ export default function App() {
   const [user,      setUser]      = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [resetMode, setResetMode] = useState(false)
-  const [tab,     setTab]     = useState('launch')
+  const [tab,     setTab]     = useState('data')
+  const [sub,     setSub]     = useState({ data: 'catalogue', analyse: 'dpquery', studies: 'list', governance: 'trust' })
   const [studies, setStudies] = useState([])
   const [selected,setSelected]= useState(null)
   const [online,  setOnline]  = useState(null)
@@ -1022,6 +1054,7 @@ export default function App() {
   const [studyInitialTab, setStudyInitialTab] = useState('live')
   const [treInitialCohort, setTreInitialCohort] = useState(null)
   const [mfaRequired, setMfaRequired] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const checkMfa = useCallback(async ()=>{
     try{
@@ -1077,10 +1110,29 @@ export default function App() {
   const displayName=user.user_metadata?.full_name||user.email?.split('@')[0]||'Researcher'
   const isAdmin=ADMIN_EMAILS.includes(user.email||'')
 
+  const go=(t,s)=>{ setTab(t); if(s) setSub(prev=>({...prev,[t]:s})); if(t!=='studies'||s==='new') setSelected(null) }
+
   const nav=(t,label,badge)=><button onClick={()=>{setTab(t);if(t!=='studies')setSelected(null)}}
     style={{padding:'6px 14px',borderRadius:99,fontSize:13,fontWeight:tab===t?600:500,cursor:'pointer',border:'none',background:tab===t?'#007AFF':'transparent',color:tab===t?'#fff':'#6E6E73',display:'flex',alignItems:'center',gap:5,transition:'all 0.15s'}}>
     {label}{badge>0&&<span style={{background:tab===t?'rgba(255,255,255,0.25)':'#007AFF',color:'#fff',fontSize:10,padding:'1px 6px',borderRadius:10,fontWeight:700,minWidth:16,textAlign:'center'}}>{badge}</span>}
   </button>
+
+  const SUBS={
+    data:       [['catalogue','🗂 Catalogue'],['applications','🔑 My Access'],['connectors','🔌 Connectors']],
+    analyse:    [['dpquery','🔏 DP Console'],['analytics','🧮 SQL'],['synthetic','🧬 Synthetic']],
+    studies:    [['list','📋 All studies'],['new','＋ New study']],
+    governance: [['trust','🏅 Trust Center'],['aria','🛡 ARIA Packs']],
+  }
+  const subRow = SUBS[tab] && !(tab==='studies'&&selected) && (
+    <div style={{display:'flex',gap:6,marginBottom:20,flexWrap:'wrap'}}>
+      {SUBS[tab].map(([id,label])=>(
+        <button key={id} onClick={()=>go(tab,id)}
+          style={{padding:'6px 14px',borderRadius:99,fontSize:12,fontWeight:sub[tab]===id?600:500,cursor:'pointer',border:'none',background:sub[tab]===id?'#1D1D1F':'rgba(0,0,0,0.05)',color:sub[tab]===id?'#fff':'#6E6E73',transition:'all 0.15s'}}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
 
   return<div style={{minHeight:'100vh',background:'#F5F5F7'}}>
     <header style={{background:'rgba(255,255,255,0.88)',backdropFilter:'saturate(180%) blur(20px)',WebkitBackdropFilter:'saturate(180%) blur(20px)',borderBottom:'1px solid rgba(0,0,0,0.08)',padding:'0 20px',height:54,display:'flex',alignItems:'center',gap:4,position:'sticky',top:0,zIndex:100}}>
@@ -1088,19 +1140,12 @@ export default function App() {
         <div style={{width:30,height:30,borderRadius:9,background:'linear-gradient(145deg,#007AFF,#5856D6)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:14,flexShrink:0,boxShadow:'0 2px 8px rgba(0,122,255,0.3)'}}>U</div>
         <span style={{fontWeight:700,fontSize:15,color:'#1D1D1F',letterSpacing:'-0.02em'}}>UndosaTech</span>
       </div>
-      {nav('catalogue','Catalogue',0)}
-      {nav('applications','My Access',0)}
+      {nav('data','Data',0)}
+      {nav('analyse','Analyse',0)}
       {nav('tre','TRE',0)}
-      {nav('synthetic','Synthetic',0)}
-      {nav('dpquery','DP Console',0)}
-      {nav('analytics','SQL',0)}
-      {nav('launch','Launch',0)}
-      {nav('nodes','Nodes', selectedNodes.length)}
       {nav('studies','Studies',running)}
-      {nav('connectors','Connectors',0)}
-      {nav('aria','🛡 ARIA',0)}
-      {nav('trust','🏅 Trust',0)}
-      {nav('security','🔐',0)}
+      {nav('nodes','Nodes', selectedNodes.length)}
+      {nav('governance','Governance',0)}
       {isAdmin&&nav('admin','Admin',0)}
       <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
         {completed>0&&<span style={{fontSize:12,color:'#32D74B',fontWeight:600,background:'rgba(50,215,75,0.1)',padding:'4px 10px',borderRadius:99}}>{completed} completed</span>}
@@ -1108,35 +1153,44 @@ export default function App() {
           <span style={{width:6,height:6,borderRadius:'50%',background:online?'#32D74B':'#FF3B30',display:'inline-block',boxShadow:online?'0 0 5px rgba(50,215,75,0.6)':'none'}}/>
           {online===null?'Connecting…':online?'Online':'Offline'}
         </span>
-        <div style={{display:'flex',alignItems:'center',gap:8,paddingLeft:10,borderLeft:'1px solid rgba(0,0,0,0.08)'}}>
-          <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#007AFF,#5856D6)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#fff',fontWeight:700,boxShadow:'0 2px 6px rgba(0,122,255,0.3)'}}>
-            {displayName[0].toUpperCase()}
-          </div>
-          <span style={{color:'#1D1D1F',fontSize:13,fontWeight:500}}>{displayName}</span>
-          <button onClick={signOut} style={{color:'#FF3B30',fontSize:12,background:'none',border:'none',cursor:'pointer',fontWeight:500,padding:'4px 8px',borderRadius:6}}>Sign out</button>
+        <div style={{position:'relative',paddingLeft:10,borderLeft:'1px solid rgba(0,0,0,0.08)'}}>
+          <button onClick={()=>setMenuOpen(o=>!o)}
+            style={{display:'flex',alignItems:'center',gap:8,background:menuOpen?'rgba(0,0,0,0.04)':'none',border:'none',cursor:'pointer',padding:'4px 8px',borderRadius:10}}>
+            <div style={{width:28,height:28,borderRadius:'50%',background:'linear-gradient(135deg,#007AFF,#5856D6)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#fff',fontWeight:700,boxShadow:'0 2px 6px rgba(0,122,255,0.3)'}}>
+              {displayName[0].toUpperCase()}
+            </div>
+            <span style={{color:'#1D1D1F',fontSize:13,fontWeight:500}}>{displayName}</span>
+            <span style={{color:'#9ca3af',fontSize:10}}>▾</span>
+          </button>
+          {menuOpen&&<>
+            <div onClick={()=>setMenuOpen(false)} style={{position:'fixed',inset:0,zIndex:998}}/>
+            <div style={{position:'absolute',right:0,top:42,background:'#fff',borderRadius:14,boxShadow:'0 12px 40px rgba(0,0,0,0.14)',border:'1px solid rgba(0,0,0,0.06)',padding:6,zIndex:999,minWidth:200}}>
+              <div style={{padding:'8px 12px',fontSize:11.5,color:'#9ca3af',borderBottom:'1px solid rgba(0,0,0,0.05)',marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{user.email}</div>
+              <button onClick={()=>{setTab('security');setSelected(null);setMenuOpen(false)}}
+                style={{display:'block',width:'100%',textAlign:'left',padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,color:'#1D1D1F',background:'none',border:'none',cursor:'pointer'}}>
+                🔐 Security &amp; 2FA
+              </button>
+              <button onClick={signOut}
+                style={{display:'block',width:'100%',textAlign:'left',padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,color:'#FF3B30',background:'none',border:'none',cursor:'pointer'}}>
+                Sign out
+              </button>
+            </div>
+          </>}
         </div>
       </div>
     </header>
     <div style={{maxWidth:820,width:'100%',margin:'0 auto',padding:'32px 20px'}}>
+      {subRow}
       <Suspense fallback={LazyFallback}>
-      {tab==='catalogue'&&<DataCatalogue session={session}/>}
-      {tab==='applications'&&<MyApplications session={session} onBrowseCatalogue={()=>setTab('catalogue')} onLaunchStudy={req=>{setTreInitialCohort(req);setTab('tre')}}/>}
-      {tab==='tre'&&<TREWorkspace session={session} initialCohort={treInitialCohort} studies={studies} onLaunchStudy={()=>setTab('launch')}/>}
-      {tab==='synthetic'&&<SyntheticDataGenerator/>}
-      {tab==='dpquery'&&<DPQueryConsole/>}
-      {tab==='analytics'&&<AnalyticsConsole session={session}/>}
-      {tab==='security'&&<SecuritySettings/>}
-      {tab==='launch'&&!selected&&<LaunchForm onLaunched={(id,hadInvitations)=>{setSelected(id);setTab('studies');setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
-      {tab==='nodes'&&(
-        <NodeRegistry
-          session={session}
-          isAdmin={isAdmin}
-          selectedNodes={selectedNodes}
-          onSelectionChange={setSelectedNodes}
-          onLaunchWithNodes={() => setTab('launch')}
-        />
-      )}
-      {tab==='studies'&&!selected&&<>
+      {tab==='data'&&sub.data==='catalogue'&&<DataCatalogue session={session}/>}
+      {tab==='data'&&sub.data==='applications'&&<MyApplications session={session} onBrowseCatalogue={()=>go('data','catalogue')} onLaunchStudy={req=>{setTreInitialCohort(req);go('tre')}}/>}
+      {tab==='data'&&sub.data==='connectors'&&<DataConnectors session={session}/>}
+      {tab==='analyse'&&sub.analyse==='dpquery'&&<DPQueryConsole/>}
+      {tab==='analyse'&&sub.analyse==='analytics'&&<AnalyticsConsole session={session}/>}
+      {tab==='analyse'&&sub.analyse==='synthetic'&&<SyntheticDataGenerator/>}
+      {tab==='tre'&&<TREWorkspace session={session} initialCohort={treInitialCohort} studies={studies} onLaunchStudy={()=>go('studies','new')}/>}
+      {tab==='studies'&&!selected&&sub.studies==='new'&&<LaunchForm onLaunched={(id,hadInvitations)=>{go('studies','list');setSelected(id);setStudyInitialTab(hadInvitations?'invitations':'live');refresh()}} user={user} session={session} preselectedNodes={selectedNodes}/>}
+      {tab==='studies'&&!selected&&sub.studies==='list'&&<>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
           <h1 style={{fontSize:22,fontWeight:700,letterSpacing:'-0.02em',color:'#1D1D1F'}}>Studies</h1>
           <div style={{fontSize:13,color:'#9ca3af'}}>{running>0&&<span style={{color:'#7c3aed',fontWeight:600,marginRight:12}}>⚡ {running} running</span>}{studies.length} total</div>
@@ -1144,10 +1198,23 @@ export default function App() {
         <StudiesList studies={studies} onSelect={id=>{setSelected(id);setStudyInitialTab('live')}}/>
       </>}
       {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
-      {tab==='connectors'&&<DataConnectors session={session}/>}
-      {tab==='aria'&&<ARIADashboard studies={studies} onOpenStudy={id=>{setSelected(id);setTab('studies');setStudyInitialTab('compliance')}}/>}
-      {tab==='trust'&&<TrustCenter session={session} studies={studies}/>}
-      {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
+      {tab==='nodes'&&(
+        <NodeRegistry
+          session={session}
+          isAdmin={isAdmin}
+          selectedNodes={selectedNodes}
+          onSelectionChange={setSelectedNodes}
+          onLaunchWithNodes={() => go('studies','new')}
+        />
+      )}
+      {tab==='governance'&&sub.governance==='trust'&&<TrustCenter session={session} studies={studies}/>}
+      {tab==='governance'&&sub.governance==='aria'&&<ARIADashboard studies={studies} onOpenStudy={id=>{go('studies','list');setSelected(id);setStudyInitialTab('compliance')}}/>}
+      {tab==='security'&&<SecuritySettings/>}
+      {tab==='admin'&&isAdmin&&(
+        <AdminGate session={session} onSetupMfa={()=>{setTab('security');setSelected(null)}} onRequireMfa={()=>setMfaRequired(true)}>
+          <AdminDashboard session={session}/>
+        </AdminGate>
+      )}
       </Suspense>
     </div>
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#F5F5F7;color:#1D1D1F;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale} input,select,button,textarea{font-family:inherit} input:focus,select:focus,textarea:focus{border-color:#007AFF !important;box-shadow:0 0 0 3px rgba(0,122,255,0.12) !important;outline:none} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:99px} a{color:#007AFF}`}</style>
