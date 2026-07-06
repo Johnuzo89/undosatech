@@ -282,6 +282,29 @@ def api_issue(req: IssueRequest, authorization: Optional[str] = Header(None)):
     return cert
 
 
+@router.get("/certificates")
+def api_list(authorization: Optional[str] = Header(None)):
+    """Recent certificates, newest first — summary fields only."""
+    from orchestrator.auth import _require_user
+    _require_user(authorization)
+    certs = _load_certs()
+    return {
+        "count": len(certs),
+        "certificates": [
+            {
+                "cert_id":   c["payload"].get("cert_id"),
+                "subject":   c["payload"].get("subject"),
+                "issued_at": c["payload"].get("issued_at"),
+                "governance": {
+                    k: c["payload"].get("governance", {}).get(k)
+                    for k in ("audit_chain_valid", "sdc_min_cell_count", "jurisdiction")
+                },
+            }
+            for c in reversed(certs[-100:])
+        ],
+    }
+
+
 @router.get("/certificates/public-key")
 def api_public_key():
     """Public — anyone can fetch the key and verify certificates offline."""

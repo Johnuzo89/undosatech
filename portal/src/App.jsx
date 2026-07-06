@@ -18,6 +18,7 @@ const SyntheticDataGenerator = lazy(() => import('./components/SyntheticDataGene
 const DPQueryConsole         = lazy(() => import('./components/DPQueryConsole'))
 const AnalyticsConsole       = lazy(() => import('./components/AnalyticsConsole'))
 const SecuritySettings       = lazy(() => import('./components/SecuritySettings'))
+const TrustCenter            = lazy(() => import('./components/TrustCenter'))
 const MFAChallenge           = lazy(() => import('./components/SecuritySettings').then(m => ({ default: m.MFAChallenge })))
 const RoundsChart            = lazy(() => import('./components/StudyCharts').then(m => ({ default: m.RoundsChart })))
 const PerClassChart          = lazy(() => import('./components/StudyCharts').then(m => ({ default: m.PerClassChart })))
@@ -1098,6 +1099,7 @@ export default function App() {
       {nav('studies','Studies',running)}
       {nav('connectors','Connectors',0)}
       {nav('aria','🛡 ARIA',0)}
+      {nav('trust','🏅 Trust',0)}
       {nav('security','🔐',0)}
       {isAdmin&&nav('admin','Admin',0)}
       <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
@@ -1144,6 +1146,7 @@ export default function App() {
       {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
       {tab==='connectors'&&<DataConnectors session={session}/>}
       {tab==='aria'&&<ARIADashboard studies={studies} onOpenStudy={id=>{setSelected(id);setTab('studies');setStudyInitialTab('compliance')}}/>}
+      {tab==='trust'&&<TrustCenter session={session} studies={studies}/>}
       {tab==='admin'&&isAdmin&&<AdminDashboard session={session}/>}
       </Suspense>
     </div>

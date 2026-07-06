@@ -83,6 +83,20 @@ def test_offline_verification_with_public_key_only(tmp_path, monkeypatch):
         pubkey_hex=cert["public_key"])
 
 
+def test_certificate_list_newest_first(tmp_path, monkeypatch):
+    certificates, lineage, state = _isolate(tmp_path, monkeypatch)
+    lineage.record_lineage("study", "S1", "created")
+    c1 = certificates.issue_certificate("study", "S1")
+    c2 = certificates.issue_certificate("model", "S1/final")
+
+    listing = certificates.api_list(authorization=None)
+    assert listing["count"] == 2
+    ids = [c["cert_id"] for c in listing["certificates"]]
+    assert ids == [c2["payload"]["cert_id"], c1["payload"]["cert_id"]]
+    assert listing["certificates"][0]["subject"]["entity_type"] == "model"
+    assert "signature" not in listing["certificates"][0]  # summary only
+
+
 def test_uncertifiable_type_rejected(tmp_path, monkeypatch):
     certificates, _, _ = _isolate(tmp_path, monkeypatch)
     import pytest
