@@ -81,8 +81,11 @@ export default function SecuritySettings() {
         {enrolling && (
           <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>1. Scan this QR code with your authenticator app</div>
-            <div style={{ background: '#fff', padding: 8, display: 'inline-block', borderRadius: 12, border: '1px solid rgba(0,0,0,0.1)' }}
-              dangerouslySetInnerHTML={{ __html: enrolling.qr }} />
+            <div style={{ background: '#fff', padding: 8, display: 'inline-block', borderRadius: 12, border: '1px solid rgba(0,0,0,0.1)' }}>
+              {enrolling.qr.trim().startsWith('data:')
+                ? <img src={enrolling.qr} alt="TOTP enrolment QR code" style={{ width: 180, height: 180, display: 'block' }} />
+                : <div dangerouslySetInnerHTML={{ __html: enrolling.qr }} />}
+            </div>
             <div style={{ fontSize: 12, color: '#6E6E73', margin: '10px 0 16px' }}>
               Or enter the secret manually: <code style={{ background: 'rgba(0,0,0,0.05)', padding: '2px 6px', borderRadius: 6 }}>{enrolling.secret}</code>
             </div>
