@@ -102,3 +102,35 @@ def test_uncertifiable_type_rejected(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(ValueError):
         certificates.issue_certificate("dataset", "octmnist")
+
+
+def test_registry_survives_redeploy_via_supabase(tmp_path, monkeypatch):
+    """After a redeploy wipes the local JSONL, the registry rehydrates from the
+    durable Supabase copy so certificate chaining and verification still hold."""
+    from tests.fake_supabase import FakeSupabase
+    from orchestrator import state
+
+    fake = FakeSupabase()
+    certificates, lineage, _ = _isolate(tmp_path, monkeypatch)
+    monkeypatch.setattr(certificates, "supabase_admin", fake)
+    monkeypatch.setattr(state, "supabase_admin", fake)
+    monkeypatch.setattr(state, "_history_state", {
+        "last_id": 0, "prev": state._GENESIS_HASH, "rows": 0, "reanchors": 0,
+        "linkage_breaks": [], "content_verified": 0, "content_mismatches": 0})
+
+    lineage.record_lineage("study", "S1", "created")
+    c1 = certificates.issue_certificate("study", "S1")
+
+    # redeploy: local cert log and audit log wiped, in-memory tip reset
+    certificates.CERTS_PATH.unlink()
+    state.AUDIT_PATH.unlink()
+    monkeypatch.setattr(state, "_last_hash", None)
+
+    # new cert must still chain onto c1, loaded from Supabase
+    c2 = certificates.issue_certificate("study", "S1")
+    assert c2["payload"]["prev_cert_hash"] == certificates._cert_hash(
+        c1["payload"], c1["signature"])
+
+    result = certificates.verify_certificate(c2)
+    assert result["signature_valid"] and result["registry_chain_intact"]
+    assert result["audit_anchor_in_chain"]

@@ -33,7 +33,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.hazmat.primitives import serialization
 
-from orchestrator.state import audit, supabase_admin, verify_audit_chain, AUDIT_PATH
+from orchestrator.state import audit, audit_chain_tip, supabase_admin, verify_audit_chain, AUDIT_PATH
 from orchestrator.sdc import SDC_MIN_CELL_COUNT
 
 logger = logging.getLogger("undosatech.certificates")
@@ -120,22 +120,32 @@ def verify_signature(payload: dict, signature_hex: str, pubkey_hex: Optional[str
         return False
 
 
-# ── Registry (JSONL + best-effort Supabase) ───────────────────────────────────
+# ── Registry (durable Supabase history + local JSONL) ─────────────────────────
 def _load_certs() -> list:
-    certs = []
+    """
+    Full registry, in chain order: the durable Supabase copy first (survives
+    redeploys — the local file lives on an ephemeral filesystem), then any
+    local-only certs whose Supabase insert failed.
+    """
+    certs, seen = [], set()
+    if supabase_admin:
+        try:
+            res = supabase_admin.table("trust_certificates").select("*").order("created_at").limit(5000).execute()
+            for r in (res.data or []):
+                c = r.get("certificate")
+                if c:
+                    certs.append(c)
+                    seen.add(c.get("payload", {}).get("cert_id"))
+        except Exception as e:
+            logger.warning("Supabase certificate read failed: %s", e)
     if CERTS_PATH.exists():
         for line in CERTS_PATH.read_text().splitlines():
             try:
-                certs.append(json.loads(line))
+                c = json.loads(line)
             except Exception:
                 continue
-    if not certs and supabase_admin:
-        try:
-            res = supabase_admin.table("trust_certificates").select("*").order("created_at").limit(5000).execute()
-            if res.data:
-                certs = [r["certificate"] for r in res.data if r.get("certificate")]
-        except Exception as e:
-            logger.warning("Supabase certificate read failed: %s", e)
+            if c.get("payload", {}).get("cert_id") not in seen:
+                certs.append(c)
     return certs
 
 
@@ -148,24 +158,22 @@ def _last_cert_hash(certs: list) -> str:
 
 def _audit_chain_tip() -> str:
     """Current tip (entry_hash) of the hash-chained audit log."""
-    tip = _GENESIS_CERT_HASH
-    if AUDIT_PATH.exists():
-        for line in AUDIT_PATH.read_text().splitlines():
-            try:
-                e = json.loads(line)
-                if e.get("entry_hash"):
-                    tip = e["entry_hash"]
-            except Exception:
-                continue
-    return tip
+    return audit_chain_tip()
 
 
 def _anchor_in_chain(anchor: str) -> bool:
-    if not AUDIT_PATH.exists():
-        return False
-    for line in AUDIT_PATH.read_text().splitlines():
-        if f'"{anchor}"' in line:
-            return True
+    """Anchor exists in the local segment or the durable history."""
+    if AUDIT_PATH.exists():
+        for line in AUDIT_PATH.read_text().splitlines():
+            if f'"{anchor}"' in line:
+                return True
+    if supabase_admin:
+        try:
+            res = supabase_admin.table("audit_logs").select("id").eq("entry_hash", anchor).limit(1).execute()
+            if res.data:
+                return True
+        except Exception as e:
+            logger.warning("Supabase anchor lookup failed: %s", e)
     return False
 
 
