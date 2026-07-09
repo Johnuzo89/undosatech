@@ -89,16 +89,36 @@ def is_real_institutional_node(node: dict) -> bool:
     return True
 
 
-def _latest_profile(node_id: str) -> Optional[dict]:
-    latest = None
+def _load_profiles_ordered() -> list:
+    """
+    All submitted profiles in submission order, from the durable Supabase copy
+    when available (survives redeploys — INDEX_PATH lives on an ephemeral
+    filesystem), else the local JSONL. Callers keep the last row per node.
+    """
+    if supabase_admin:
+        try:
+            res = (supabase_admin.table("archive_profiles")
+                   .select("profile").order("created_at").limit(5000).execute())
+            rows = [r["profile"] for r in (res.data or []) if r.get("profile")]
+            if rows:
+                return rows
+        except Exception as e:
+            logger.warning("Supabase profile read failed: %s", e)
+    profiles = []
     if INDEX_PATH.exists():
         for line in INDEX_PATH.read_text().splitlines():
             try:
-                p = json.loads(line)
-                if p.get("node_id") == node_id:
-                    latest = p
+                profiles.append(json.loads(line))
             except Exception:
                 continue
+    return profiles
+
+
+def _latest_profile(node_id: str) -> Optional[dict]:
+    latest = None
+    for p in _load_profiles_ordered():
+        if p.get("node_id") == node_id:
+            latest = p
     return latest
 
 
@@ -244,15 +264,11 @@ async def submit_profile(sub: ProfileSubmission, x_node_id: Optional[str] = Head
 
 
 def _all_profiles_latest() -> list:
-    """Latest profile per node."""
+    """Latest profile per node (durable Supabase copy preferred)."""
     by_node: dict = {}
-    if INDEX_PATH.exists():
-        for line in INDEX_PATH.read_text().splitlines():
-            try:
-                p = json.loads(line)
-                by_node[p["node_id"]] = p
-            except Exception:
-                continue
+    for p in _load_profiles_ordered():
+        if p.get("node_id"):
+            by_node[p["node_id"]] = p
     return list(by_node.values())
 
 

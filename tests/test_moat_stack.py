@@ -118,6 +118,33 @@ def test_profile_sdc_suppression_and_summary(tmp_path, monkeypatch):
     assert profile["sdc"]["suppressed_cells"] == 1
 
 
+def test_reactivation_index_survives_redeploy(tmp_path, monkeypatch):
+    """After a redeploy wipes the local JSONL, the index rehydrates from the
+    durable Supabase copy so /index and /index/summary aren't blanked."""
+    from tests.fake_supabase import FakeSupabase
+    archive_index, _, _, _, _, _ = _isolate(tmp_path, monkeypatch)
+    fake = FakeSupabase()
+    monkeypatch.setattr(archive_index, "supabase_admin", fake)
+
+    fake.tables["archive_profiles"] = [
+        {"id": 1, "node_id": "n1", "created_at": "2026-07-01",
+         "profile": {"node_id": "n1", "jurisdiction": "UK", "scanned_files": 100,
+                     "modalities": {"DICOM": 100}}},
+        {"id": 2, "node_id": "n1", "created_at": "2026-07-08",
+         "profile": {"node_id": "n1", "jurisdiction": "UK", "scanned_files": 150,
+                     "modalities": {"DICOM": 150}}},
+        {"id": 3, "node_id": "n2", "created_at": "2026-07-05",
+         "profile": {"node_id": "n2", "jurisdiction": "US", "scanned_files": 40,
+                     "modalities": {"OCT": 40}}},
+    ]
+    # local INDEX_PATH does not exist (wiped by redeploy)
+    latest = archive_index._all_profiles_latest()
+    by_node = {p["node_id"]: p for p in latest}
+    assert set(by_node) == {"n1", "n2"}
+    assert by_node["n1"]["scanned_files"] == 150      # newest kept, not the stale one
+    assert archive_index._latest_profile("n1")["scanned_files"] == 150
+
+
 def test_node_client_archive_profiler(tmp_path, monkeypatch):
     """The client-side scanner reports aggregates only — no paths or names."""
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "fl_nodes"))
