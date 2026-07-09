@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: { port: 3000 },
+  // Vitest: unit tests only. Playwright owns e2e/ (its test() would otherwise
+  // be picked up by Vitest's default spec glob and crash the unit run).
+  test: { include: ['src/**/*.{test,spec}.{js,jsx}'] },
   build: {
     rollupOptions: {
       output: {
