@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { MILESTONES, PLATFORM_VERSION } from '../lib/milestones'
 
 const API = import.meta.env.VITE_API_URL || 'https://undosatech-production.up.railway.app'
 const card = { background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 16 }
@@ -482,12 +483,55 @@ function ReactivationIndex({ headers }) {
   )
 }
 
+const TAG_STYLE = {
+  Integrity:      { background: 'rgba(50,215,75,0.12)',  color: '#1B7F3B' },
+  Governance:     { background: 'rgba(0,122,255,0.10)',  color: '#0A66C2' },
+  Product:        { background: 'rgba(175,82,222,0.12)', color: '#7A2BB0' },
+  Infrastructure: { background: 'rgba(255,159,10,0.14)', color: '#B25000' },
+  Standards:      { background: 'rgba(0,122,255,0.10)',  color: '#0A66C2' },
+  Foundations:    { background: 'rgba(99,99,102,0.14)',  color: '#48484A' },
+}
+
+// ── Platform milestones ───────────────────────────────────────────────────────
+// The "what already works" hint: a plain, dated record of shipped capabilities.
+function Milestones() {
+  return (
+    <div>
+      <div style={card}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>What the platform does today</div>
+        <div style={{ fontSize: 12, color: '#6E6E73', lineHeight: 1.6 }}>
+          Each capability below is live and exercisable from the portal or independently verifiable. This is the record of
+          what has shipped — provenance you can check rather than claims you have to trust.
+        </div>
+      </div>
+      <div style={{ position: 'relative' }}>
+        {MILESTONES.map((m, i) => (
+          <div key={i} style={{ ...card, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 54 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#1D1D1F' }}>{m.date}</div>
+              <div style={{ width: 8, height: 8, borderRadius: 99, background: (TAG_STYLE[m.tag] || TAG_STYLE.Foundations).color, margin: '8px auto 0' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#1D1D1F' }}>{m.title}</span>
+                <span style={{ ...(TAG_STYLE[m.tag] || TAG_STYLE.Foundations), fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{m.tag}</span>
+              </div>
+              <div style={{ fontSize: 12.5, color: '#6E6E73', lineHeight: 1.6 }}>{m.body}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Trust Center shell ────────────────────────────────────────────────────────
 export default function TrustCenter({ session, studies }) {
-  const [tab, setTab] = useState('certificates')
+  const [tab, setTab] = useState('milestones')
   const headers = useMemo(() => ({ Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' }), [session?.access_token])
 
   const SECTIONS = [
+    ['milestones', '✦ Milestones'],
     ['certificates', '🏅 Certificates'],
     ['evidence', '📋 Evidence Packs'],
     ['ledger', 'ε Privacy Ledger'],
@@ -499,6 +543,7 @@ export default function TrustCenter({ session, studies }) {
       <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: '#1D1D1F', marginBottom: 4 }}>Trust Center</h1>
       <p style={{ fontSize: 13, color: '#6E6E73', marginBottom: 16 }}>
         Cryptographically verifiable provenance, regulator-ready evidence, enforced privacy budgets, and the federated archive index
+        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: 'rgba(0,0,0,0.05)', color: '#6E6E73' }}>v{PLATFORM_VERSION}</span>
       </p>
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
         {SECTIONS.map(([id, label]) => (
@@ -508,6 +553,7 @@ export default function TrustCenter({ session, studies }) {
           </button>
         ))}
       </div>
+      {tab === 'milestones' && <Milestones />}
       {tab === 'certificates' && <Certificates headers={headers} studies={studies} />}
       {tab === 'evidence' && <EvidencePacks headers={headers} studies={studies} />}
       {tab === 'ledger' && <PrivacyLedger headers={headers} />}
