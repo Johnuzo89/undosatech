@@ -59,7 +59,7 @@ test('demo mode mounts, tours, and never touches the real API', async ({ page })
   await expect(page.getByText('Node Registry')).toBeVisible()
   await next.click() // → completed study
   await expect(page.getByText('Federated AMD Progression — 3-site pilot').first()).toBeVisible()
-  await expect(page.getByText('final accuracy')).toBeVisible()
+  await expect(page.getByText('final accuracy').first()).toBeVisible()
 
   // The whole walkthrough ran on fixtures alone.
   expect(apiCalls, `demo mode leaked API calls:\n${apiCalls.join('\n')}`).toEqual([])
