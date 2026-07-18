@@ -35,3 +35,33 @@ test('lazy portal chunk loads after mount', async ({ page }) => {
   const appAssets = failed.filter((u) => u.includes('/assets/') || u.includes('localhost'))
   expect(appAssets, `failed app requests:\n${appAssets.join('\n')}`).toEqual([])
 })
+
+test('demo mode mounts, tours, and never touches the real API', async ({ page }) => {
+  const pageErrors = []
+  page.on('pageerror', (e) => pageErrors.push(e.message))
+  const apiCalls = []
+  page.on('request', (r) => {
+    const u = r.url()
+    if (u.includes('railway.app') || u.includes('localhost:8000')) apiCalls.push(u)
+  })
+
+  await page.goto('/?demo=1', { waitUntil: 'domcontentloaded' })
+
+  // Demo shell mounted: banner + first tour step.
+  await expect(page.getByText('Demo — sample data')).toBeVisible()
+  await expect(page.getByText('Welcome — a 10-minute walkthrough')).toBeVisible()
+
+  const next = page.getByRole('button', { name: 'Next →' })
+  await next.click() // → catalogue
+  await next.click() // → study proposal + invitations
+  await expect(page.getByText('Glaucoma progression from archived visual fields').first()).toBeVisible()
+  await next.click() // → node registry
+  await expect(page.getByText('Node Registry')).toBeVisible()
+  await next.click() // → completed study
+  await expect(page.getByText('Federated AMD Progression — 3-site pilot').first()).toBeVisible()
+  await expect(page.getByText('final accuracy')).toBeVisible()
+
+  // The whole walkthrough ran on fixtures alone.
+  expect(apiCalls, `demo mode leaked API calls:\n${apiCalls.join('\n')}`).toEqual([])
+  expect(pageErrors, `uncaught page errors:\n${pageErrors.join('\n')}`).toEqual([])
+})

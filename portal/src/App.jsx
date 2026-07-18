@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from 
 import { createClient } from '@supabase/supabase-js'
 import { isInstitutional } from './lib/institutionalDomains'
 import { ARCH_INFO, ARCHS, DATASETS, PRESETS } from './lib/studyConfig'
+import { demoBoot, isDemoMode, DEMO_USER, DEMO_SESSION, enterDemoMode, exitDemoMode } from './lib/demoMode'
 
 // Heavy feature panels are code-split: each loads on first visit to its tab,
 // keeping the initial bundle to the shell + auth screen.
@@ -22,6 +23,7 @@ const TrustCenter            = lazy(() => import('./components/TrustCenter'))
 const MFAChallenge           = lazy(() => import('./components/SecuritySettings').then(m => ({ default: m.MFAChallenge })))
 const RoundsChart            = lazy(() => import('./components/StudyCharts').then(m => ({ default: m.RoundsChart })))
 const PerClassChart          = lazy(() => import('./components/StudyCharts').then(m => ({ default: m.PerClassChart })))
+const DemoTour               = lazy(() => import('./components/DemoTour'))
 
 const LazyFallback = <div style={{padding:40,textAlign:'center',color:'#9ca3af',fontSize:13}}>Loading…</div>
 
@@ -34,6 +36,9 @@ const supabase = createClient(
 )
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Must run before any component fetches: honours ?demo=1 and, in demo mode,
+// swaps window.fetch for the fixture router so no request reaches the API.
+demoBoot()
 
 async function apiFetch(path, opts={}, token=null) {
   const headers = { 'Content-Type': 'application/json', ...opts.headers }
@@ -380,6 +385,12 @@ function AuthScreen({ onAuth }) {
               </div>
             </>
           )}
+        </div>
+        <div style={{textAlign:'center',marginTop:16}}>
+          <button onClick={enterDemoMode}
+            style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.22)',color:'rgba(255,255,255,0.9)',borderRadius:12,padding:'11px 22px',fontSize:13,fontWeight:600,cursor:'pointer',letterSpacing:'-0.01em'}}>
+            🧪 Explore the interactive demo — no account needed
+          </button>
         </div>
         <div style={{textAlign:'center',marginTop:16,fontSize:11,color:'#475569'}}>
           By signing in you agree to our <a href="https://undosatech.com/terms" target="_blank" rel="noreferrer" style={{color:'#94a3b8'}}>terms</a> and research data governance framework.<br/>
@@ -1064,6 +1075,7 @@ export default function App() {
   },[])
 
   useEffect(()=>{
+    if(isDemoMode()){ setUser(DEMO_USER); setSession(DEMO_SESSION); setLoading(false); return }
     supabase.auth.getSession().then(({data:{session}})=>{
       setSession(session); setUser(session?.user||null); setLoading(false)
       if(session) checkMfa()
@@ -1096,7 +1108,8 @@ export default function App() {
   useEffect(()=>{ if(user) refresh() },[user,refresh])
   useEffect(()=>{ const id=setInterval(()=>{ if(user) refresh() },6000); return()=>clearInterval(id) },[user,refresh])
 
-  const signOut = async()=>{ await supabase.auth.signOut(); setSession(null); setUser(null) }
+  const demo = isDemoMode()
+  const signOut = async()=>{ if(demo){exitDemoMode();return} await supabase.auth.signOut(); setSession(null); setUser(null) }
 
   if(loading) return <div style={{minHeight:'100vh',background:'#0f172a',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{color:'#94a3b8',fontSize:14}}>Loading…</div></div>
   if(resetMode) return <ResetPasswordScreen onDone={()=>setResetMode(false)}/>
@@ -1108,7 +1121,9 @@ export default function App() {
   const running=studies.filter(s=>s.status==='running').length
   const completed=studies.filter(s=>s.status==='completed').length
   const displayName=user.user_metadata?.full_name||user.email?.split('@')[0]||'Researcher'
-  const isAdmin=ADMIN_EMAILS.includes(user.email||'')
+  // Demo grants the admin view so reviewers can exercise approve/accept flows —
+  // every action lands in the fixture router, never the API.
+  const isAdmin=demo||ADMIN_EMAILS.includes(user.email||'')
 
   const go=(t,s)=>{ setTab(t); if(s) setSub(prev=>({...prev,[t]:s})); if(t!=='studies'||s==='new') setSelected(null) }
 
@@ -1146,7 +1161,7 @@ export default function App() {
       {nav('studies','Studies',running)}
       {nav('nodes','Nodes', selectedNodes.length)}
       {nav('governance','Governance',0)}
-      {isAdmin&&nav('admin','Admin',0)}
+      {isAdmin&&!demo&&nav('admin','Admin',0)}
       <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
         {completed>0&&<span style={{fontSize:12,color:'#32D74B',fontWeight:600,background:'rgba(50,215,75,0.1)',padding:'4px 10px',borderRadius:99}}>{completed} completed</span>}
         <span style={{color:online?'#32D74B':'#FF3B30',display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:500,background:online?'rgba(50,215,75,0.08)':'rgba(255,59,48,0.08)',padding:'4px 10px',borderRadius:99}}>
@@ -1166,13 +1181,13 @@ export default function App() {
             <div onClick={()=>setMenuOpen(false)} style={{position:'fixed',inset:0,zIndex:998}}/>
             <div style={{position:'absolute',right:0,top:42,background:'#fff',borderRadius:14,boxShadow:'0 12px 40px rgba(0,0,0,0.14)',border:'1px solid rgba(0,0,0,0.06)',padding:6,zIndex:999,minWidth:200}}>
               <div style={{padding:'8px 12px',fontSize:11.5,color:'#9ca3af',borderBottom:'1px solid rgba(0,0,0,0.05)',marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{user.email}</div>
-              <button onClick={()=>{setTab('security');setSelected(null);setMenuOpen(false)}}
+              {!demo&&<button onClick={()=>{setTab('security');setSelected(null);setMenuOpen(false)}}
                 style={{display:'block',width:'100%',textAlign:'left',padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,color:'#1D1D1F',background:'none',border:'none',cursor:'pointer'}}>
                 🔐 Security &amp; 2FA
-              </button>
+              </button>}
               <button onClick={signOut}
                 style={{display:'block',width:'100%',textAlign:'left',padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,color:'#FF3B30',background:'none',border:'none',cursor:'pointer'}}>
-                Sign out
+                {demo?'Exit demo':'Sign out'}
               </button>
             </div>
           </>}
@@ -1197,7 +1212,7 @@ export default function App() {
         </div>
         <StudiesList studies={studies} onSelect={id=>{setSelected(id);setStudyInitialTab('live')}}/>
       </>}
-      {tab==='studies'&&selected&&<StudyView studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
+      {tab==='studies'&&selected&&<StudyView key={`${selected}:${studyInitialTab}`} studyId={selected} onBack={()=>{setSelected(null);setStudyInitialTab('live')}} session={session} isAdmin={isAdmin} initialTab={studyInitialTab}/>}
       {tab==='nodes'&&(
         <NodeRegistry
           session={session}
@@ -1217,6 +1232,12 @@ export default function App() {
       )}
       </Suspense>
     </div>
+    {demo&&<Suspense fallback={null}>
+      <DemoTour onNavigate={({tab:t,sub:s,studyId,studyTab})=>{
+        if(studyId){setStudyInitialTab(studyTab||'live');setTab('studies');setSub(p=>({...p,studies:'list'}));setSelected(studyId)}
+        else go(t,s)
+      }}/>
+    </Suspense>}
     <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} *{box-sizing:border-box} body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#F5F5F7;color:#1D1D1F;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale} input,select,button,textarea{font-family:inherit} input:focus,select:focus,textarea:focus{border-color:#007AFF !important;box-shadow:0 0 0 3px rgba(0,122,255,0.12) !important;outline:none} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:99px} a{color:#007AFF}`}</style>
   </div>
 }
