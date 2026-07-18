@@ -181,6 +181,7 @@ class NodeHeartbeatRequest(BaseModel):
 class InviteNodesRequest(BaseModel):
     node_ids: List[str]
     message: str = ""
+    governance: dict = {}
 
 
 # ── /nodes/* endpoints ────────────────────────────────────────────────────────
@@ -501,10 +502,41 @@ async def invite_nodes(
         raise HTTPException(403, "Not your study")
 
     study_name = study.get("name") or study.get("study_name", "Untitled study")
+
+    # A complete governance package travels with every invitation: the parts
+    # only the researcher knows are required inputs; the parts the platform
+    # already knows are assembled from the study record so they cannot drift.
+    gov_in = req.governance or {}
+    missing = [f for f in ("research_question", "ethics_status") if not str(gov_in.get(f, "")).strip()]
+    if missing:
+        raise HTTPException(400, "Governance package incomplete — invitations must state: "
+                                 + ", ".join(missing))
+    from orchestrator.sdc import SDC_MIN_CELL_COUNT
+    governance = {
+        "research_question": str(gov_in.get("research_question", "")).strip(),
+        "ethics_status": str(gov_in.get("ethics_status", "")).strip(),
+        "ethics_reference": str(gov_in.get("ethics_reference", "")).strip(),
+        "requested_variables": str(gov_in.get("requested_variables", "")).strip(),
+        "expected_outputs": str(gov_in.get("expected_outputs", "")).strip(),
+        "retention": str(gov_in.get("retention", "")).strip()
+            or "Model updates retained for the study audit period; no institutional data is copied or retained by the platform.",
+        "withdrawal": str(gov_in.get("withdrawal", "")).strip()
+            or "The institution may withdraw at any time; its node stops participating from the next round and the withdrawal is recorded on the audit chain.",
+        # assembled from platform state
+        "investigator": getattr(user, "email", ""),
+        "dataset": study.get("dataset", ""),
+        "model_version": f"{study.get('model') or study.get('architecture', '')} · {study.get('num_rounds') or study.get('total_rounds', '?')} rounds",
+        "privacy_settings": {
+            "dp_enabled": bool(study.get("dp_enabled")),
+            "dp_epsilon": study.get("dp_epsilon"),
+            "sdc_min_cell_count": SDC_MIN_CELL_COUNT,
+        },
+    }
+
     results = []
     for node_id in req.node_ids:
         try:
-            supabase_admin.table("study_invitations").upsert({
+            row = {
                 "study_id": study_id,
                 "node_id": node_id,
                 "invited_by": str(user.id),
@@ -512,7 +544,16 @@ async def invite_nodes(
                 "study_name": study_name,
                 "message": req.message,
                 "status": "pending",
-            }, on_conflict="study_id,node_id").execute()
+                "governance": governance,
+            }
+            try:
+                supabase_admin.table("study_invitations").upsert(row, on_conflict="study_id,node_id").execute()
+            except Exception as col_err:
+                # governance column missing (migration not yet run): keep the
+                # invitation flowing, but say so loudly in the logs.
+                logger.error(f"invitation governance not stored for {node_id} (migration run?): {col_err}")
+                row.pop("governance")
+                supabase_admin.table("study_invitations").upsert(row, on_conflict="study_id,node_id").execute()
             contact_email, node_name = _get_node_contact(node_id)
             if contact_email:
                 _send_invitation_email(

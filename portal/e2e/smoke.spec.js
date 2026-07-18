@@ -55,6 +55,9 @@ test('demo mode mounts, tours, and never touches the real API', async ({ page })
   await next.click() // → catalogue
   await next.click() // → study proposal + invitations
   await expect(page.getByText('Glaucoma progression from archived visual fields').first()).toBeVisible()
+  // invitations are governance packages — expand one and check a required field
+  await page.getByRole('button', { name: /Governance package/ }).first().click()
+  await expect(page.getByText('Research question').first()).toBeVisible()
   await next.click() // → node registry
   await expect(page.getByText('Node Registry')).toBeVisible()
   await next.click() // → completed study

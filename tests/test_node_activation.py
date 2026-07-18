@@ -240,3 +240,44 @@ def test_heartbeat_still_revives_offline_node(sb, monkeypatch):
     req = nodes.NodeHeartbeatRequest(node_id="kings-01", api_key="k")
     asyncio.run(nodes.node_heartbeat(req))
     assert sb.table("fl_nodes").rows[0]["status"] == "active"
+
+
+# ── Invitations must carry a governance package ───────────────────────────────
+RESEARCHER = SimpleNamespace(id="user-9", email="pi@dundee.ac.uk")
+
+
+def _invite_env(sb, monkeypatch):
+    monkeypatch.setattr(nodes, "_require_user", lambda auth: RESEARCHER)
+    monkeypatch.setattr(nodes, "store", None)
+    monkeypatch.setattr(nodes, "jobs", {"st-1": {
+        "name": "AMD pilot", "user_id": "user-9", "dataset": "octmnist",
+        "model": "resnet18", "num_rounds": 6, "dp_enabled": True, "dp_epsilon": 3.0,
+    }})
+    monkeypatch.setattr(nodes, "_get_node_contact", lambda n: (None, None))
+
+
+def test_invite_requires_research_question_and_ethics(sb, monkeypatch):
+    _invite_env(sb, monkeypatch)
+    req = nodes.InviteNodesRequest(node_ids=["kings-01"], governance={})
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(nodes.invite_nodes("st-1", req, authorization="Bearer x"))
+    assert e.value.status_code == 400
+    assert "research_question" in e.value.detail
+
+
+def test_invitation_carries_assembled_governance_package(sb, monkeypatch):
+    _invite_env(sb, monkeypatch)
+    req = nodes.InviteNodesRequest(node_ids=["kings-01"], governance={
+        "research_question": "Does archived OCT predict AMD progression?",
+        "ethics_status": "approved", "ethics_reference": "REC-1",
+    })
+    out = asyncio.run(nodes.invite_nodes("st-1", req, authorization="Bearer x"))
+    assert out["invited"][0]["status"] == "invited"
+    inv = sb.table("study_invitations").rows[0]
+    gov = inv["governance"]
+    assert gov["research_question"].startswith("Does archived OCT")
+    assert gov["investigator"] == "pi@dundee.ac.uk"       # assembled, not client-supplied
+    assert gov["dataset"] == "octmnist"
+    assert "resnet18" in gov["model_version"]
+    assert gov["privacy_settings"]["dp_enabled"] is True
+    assert gov["retention"] and gov["withdrawal"]         # defaults filled in

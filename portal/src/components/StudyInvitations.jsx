@@ -23,12 +23,55 @@ function StatusBadge({ status }) {
   );
 }
 
+// ── Governance package (shown to the institution before it accepts) ───────────
+const ETHICS_LABEL = { approved: "✓ Ethics approved", pending: "⏳ Ethics review pending", exempt: "Exempt from ethics review" };
+
+export function GovernancePackage({ gov, dark = false }) {
+  if (!gov) return (
+    <div style={{ fontSize: 12, color: dark ? "#8E8E93" : "#9ca3af", fontStyle: "italic" }}>
+      No governance package on this invitation (sent before governance packages were required).
+    </div>
+  );
+  const fg = dark ? "#e2e8f0" : "#1D1D1F";
+  const muted = dark ? "#8E8E93" : "#6b7280";
+  const priv = gov.privacy_settings || {};
+  const rows = [
+    ["Research question", gov.research_question],
+    ["Investigator", gov.investigator],
+    ["Ethics status", `${ETHICS_LABEL[gov.ethics_status] || gov.ethics_status}${gov.ethics_reference ? ` · ${gov.ethics_reference}` : ""}`],
+    ["Requested dataset", gov.dataset],
+    ["Requested variables", gov.requested_variables],
+    ["Model version", gov.model_version],
+    ["Privacy settings", priv.dp_enabled
+      ? `Differential privacy on (ε = ${priv.dp_epsilon ?? "—"}) · small-cell suppression <${priv.sdc_min_cell_count ?? 5}`
+      : `No DP on this study · small-cell suppression <${priv.sdc_min_cell_count ?? 5}`],
+    ["Expected outputs", gov.expected_outputs],
+    ["Retention", gov.retention],
+    ["Withdrawal", gov.withdrawal],
+  ].filter(([, v]) => v);
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {rows.map(([k, v]) => (
+        <div key={k}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{k}</div>
+          <div style={{ fontSize: 12.5, color: fg, lineHeight: 1.5 }}>{v}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Invite modal ──────────────────────────────────────────────────────────────
 function InviteModal({ studyId, session, existingNodeIds, onClose, onInvited }) {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState([]);
   const [message, setMessage] = useState("");
+  const [gov, setGov] = useState({
+    research_question: "", ethics_status: "approved", ethics_reference: "",
+    requested_variables: "", expected_outputs: "", retention: "", withdrawal: "",
+  });
+  const setG = (k, v) => setGov(g => ({ ...g, [k]: v }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -47,12 +90,13 @@ function InviteModal({ studyId, session, existingNodeIds, onClose, onInvited }) 
 
   const submit = async () => {
     if (!selected.length) { setErr("Select at least one node."); return; }
+    if (!gov.research_question.trim()) { setErr("State the research question — the institution sees it before accepting."); return; }
     setBusy(true); setErr(null);
     try {
       const r = await fetch(`${API}/studies/${studyId}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ node_ids: selected, message }),
+        body: JSON.stringify({ node_ids: selected, message, governance: gov }),
       });
       if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Invite failed"); }
       onInvited();
@@ -104,6 +148,40 @@ function InviteModal({ studyId, session, existingNodeIds, onClose, onInvited }) 
                 </div>
               ))}
             </div>
+            <div style={{ background: "rgba(0,122,255,0.05)", border: "1px solid rgba(0,122,255,0.18)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#007AFF", marginBottom: 2 }}>Governance package</div>
+              <div style={{ fontSize: 11.5, color: "#6b7280", lineHeight: 1.5, marginBottom: 12 }}>
+                The institution sees this before deciding. Dataset, model version, and privacy settings are
+                attached automatically from the study; retention and withdrawal use platform defaults unless you override them.
+              </div>
+              {[
+                ["Research question *", "research_question", "e.g. Can archived OCT predict progression from intermediate to advanced AMD within 2 years?"],
+                ["Requested variables", "requested_variables", "e.g. OCT volumes, AMD stage labels, age band — no identifiers"],
+                ["Expected outputs", "expected_outputs", "e.g. Aggregate model + per-class metrics; no patient-level outputs"],
+              ].map(([lbl, key, ph]) => (
+                <div key={key} style={{ marginBottom: 10 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>{lbl}</label>
+                  <textarea value={gov[key]} onChange={e => setG(key, e.target.value)} placeholder={ph} rows={2}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(0,0,0,0.1)", fontSize: 12.5, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit", background: "#fff", color: "#1D1D1F", outline: "none" }} />
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 150 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>Ethics status *</label>
+                  <select value={gov.ethics_status} onChange={e => setG("ethics_status", e.target.value)}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(0,0,0,0.1)", fontSize: 12.5, background: "#fff", color: "#1D1D1F" }}>
+                    <option value="approved">Approved</option>
+                    <option value="pending">Review pending</option>
+                    <option value="exempt">Exempt</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1, minWidth: 150 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>Ethics reference</label>
+                  <input value={gov.ethics_reference} onChange={e => setG("ethics_reference", e.target.value)} placeholder="REC-24/SC/0123"
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(0,0,0,0.1)", fontSize: 12.5, boxSizing: "border-box", background: "#fff", color: "#1D1D1F", outline: "none" }} />
+                </div>
+              </div>
+            </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>Message to node operators (optional)</label>
               <textarea
@@ -139,6 +217,7 @@ export default function StudyInvitations({ studyId, session, isAdmin }) {
   const [actionErr, setActionErr] = useState(null);
   const [duaModal, setDuaModal] = useState(null);
   const [duaText, setDuaText] = useState('');
+  const [govOpen, setGovOpen] = useState(null); // inv id with expanded governance package
 
   const fetch_ = useCallback(async () => {
     try {
@@ -231,6 +310,15 @@ export default function StudyInvitations({ studyId, session, isAdmin }) {
                 </div>
                 {inv.message && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, fontStyle: "italic" }}>"{inv.message}"</div>}
                 {inv.decline_reason && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>Reason: {inv.decline_reason}</div>}
+                <button onClick={() => setGovOpen(govOpen === inv.id ? null : inv.id)}
+                  style={{ marginTop: 6, padding: "3px 10px", borderRadius: 8, border: "1px solid rgba(0,122,255,0.3)", background: "rgba(0,122,255,0.05)", color: "#007AFF", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                  📋 Governance package {govOpen === inv.id ? "▴" : "▾"}
+                </button>
+                {govOpen === inv.id && (
+                  <div style={{ marginTop: 10, padding: "12px 14px", background: "#f9fafb", borderRadius: 10, border: "1px solid rgba(0,0,0,0.06)" }}>
+                    <GovernancePackage gov={inv.governance} />
+                  </div>
+                )}
               </div>
               <StatusBadge status={inv.status} />
               {isAdmin && inv.status === "pending" && (
@@ -275,7 +363,13 @@ export default function StudyInvitations({ studyId, session, isAdmin }) {
       {duaModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: 24, maxWidth: 560, width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Data Use Agreement</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Before you accept</div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>Review what this study asks of your institution, then acknowledge the Data Use Agreement.</div>
+            <div style={{ padding: '12px 14px', background: 'rgba(0,122,255,0.04)', border: '1px solid rgba(0,122,255,0.15)', borderRadius: 10, marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#007AFF', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Governance package</div>
+              <GovernancePackage gov={invitations.find(i => i.id === duaModal)?.governance} />
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Data Use Agreement</div>
             <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.7, whiteSpace: 'pre-wrap', background: '#f9fafb', borderRadius: 8, padding: 14, marginBottom: 16, fontFamily: 'monospace' }}>{duaText}</div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setDuaModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Cancel</button>

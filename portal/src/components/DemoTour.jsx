@@ -20,7 +20,7 @@ const STEPS = [
   {
     nav: { studyId: DEMO_INVITE_STUDY_ID, studyTab: 'invitations' },
     role: 'Researcher', title: 'A study starts as a governance request',
-    body: 'Nothing trains until every invited institution consents. This proposal has one pending invitation — press Accept on it and you will be shown the Data Use Agreement that must be acknowledged first. That acknowledgement lands on the audit chain.',
+    body: 'Nothing trains until every invited institution consents. Expand the 📋 Governance package on the pending invitation — research question, ethics status, requested variables, privacy settings, retention, withdrawal — then press Accept to see the review-and-DUA step every institution goes through. That acknowledgement lands on the audit chain.',
   },
   {
     nav: { tab: 'nodes' },

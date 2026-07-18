@@ -1,6 +1,7 @@
 // portal/src/components/NodeRegistry.jsx
 
 import { useState, useEffect, useCallback } from "react";
+import { GovernancePackage } from "./StudyInvitations";
 
 const API = import.meta.env.VITE_API_URL || "https://undosatech-production.up.railway.app";
 
@@ -122,6 +123,7 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
   const [actionMsg, setActionMsg] = useState(null);
   const [invitations, setInvitations] = useState([]);
   const [invBusy, setInvBusy] = useState(null);
+  const [invGovOpen, setInvGovOpen] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -163,12 +165,18 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
   };
 
   const respondInvitation = async (invId, action, reason = "") => {
+    if (action === "accept" && !window.confirm(
+      "Accepting confirms your institution's participation and acknowledges the UndosaTech Data Use Agreement:\n\n" +
+      "• Patient-level data stays on your infrastructure at all times\n" +
+      "• Only aggregate, disclosure-controlled model updates are shared\n" +
+      "• You can withdraw at any time; withdrawal is recorded on the audit chain\n\n" +
+      "Review the invitation's governance package before accepting.")) return;
     setInvBusy(invId);
     try {
       const res = await fetch(`${API}/invitations/${invId}/${action}`, {
         method: action === "withdraw" ? "DELETE" : "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
-        body: action !== "withdraw" ? JSON.stringify({ reason }) : undefined,
+        body: action !== "withdraw" ? JSON.stringify({ reason, ...(action === "accept" ? { dua_acknowledged: true } : {}) }) : undefined,
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Failed"); }
       await load();
@@ -278,13 +286,22 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
                   };
                   const sc = statusColors[inv.status] || statusColors.pending;
                   return (
-                    <div key={inv.id} style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div key={inv.id} style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, color: "#f0f0f5", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.study_name || inv.study_id}</div>
                         <div style={{ fontSize: 11, color: "#6E6E73" }}>
                           {inv.invited_by_email || "Unknown researcher"} · {new Date(inv.invited_at).toLocaleDateString()}
                         </div>
                         {inv.message && <div style={{ fontSize: 11, color: "#6E6E73", fontStyle: "italic", marginTop: 2 }}>"{inv.message}"</div>}
+                        <button onClick={() => setInvGovOpen(invGovOpen === inv.id ? null : inv.id)}
+                          style={{ marginTop: 5, padding: "3px 10px", borderRadius: 7, border: "1px solid rgba(0,122,255,0.35)", background: "rgba(0,122,255,0.08)", color: "#007AFF", fontSize: 10.5, fontWeight: 600, cursor: "pointer" }}>
+                          📋 Governance package {invGovOpen === inv.id ? "▴" : "▾"}
+                        </button>
+                        {invGovOpen === inv.id && (
+                          <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)" }}>
+                            <GovernancePackage gov={inv.governance} dark />
+                          </div>
+                        )}
                       </div>
                       <span style={{ padding: "3px 9px", borderRadius: 99, background: sc.bg, color: sc.text, fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", flexShrink: 0 }}>{inv.status}</span>
                       {isAdmin && inv.status === "pending" && (

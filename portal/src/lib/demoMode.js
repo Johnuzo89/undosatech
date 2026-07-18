@@ -81,12 +81,32 @@ const NODES = [
 
 // One store serves both perspectives: the researcher's study view and the
 // data custodian's node view.
+const GOV_AMD = {
+  research_question: 'Can archived OCT volumes predict progression from intermediate to advanced AMD within 2 years?',
+  investigator: 'j.ohanebo@dundee.ac.uk',
+  ethics_status: 'approved', ethics_reference: 'REC-26/ES/0041',
+  dataset: 'octmnist',
+  requested_variables: 'OCT volumes, AMD stage labels, age band — no identifiers',
+  model_version: 'resnet18 · 6 rounds',
+  privacy_settings: { dp_enabled: true, dp_epsilon: 3.0, sdc_min_cell_count: 5 },
+  expected_outputs: 'Aggregate federated model with per-class metrics; no patient-level outputs',
+  retention: 'Model updates retained for the study audit period; no institutional data is copied or retained by the platform.',
+  withdrawal: 'The institution may withdraw at any time; its node stops participating from the next round and the withdrawal is recorded on the audit chain.',
+}
+const GOV_GLAUCOMA = {
+  ...GOV_AMD,
+  research_question: 'Does combining archived visual fields with OCT improve detection of fast glaucoma progression?',
+  ethics_status: 'pending', ethics_reference: 'REC-26/ES/0102 (submitted)',
+  requested_variables: 'Visual field indices, OCT RNFL thickness, age band — no identifiers',
+  model_version: 'resnet18 · 8 rounds',
+}
 const INVITATIONS = [
   {
     id: 'demo-inv-1', study_id: DEMO_STUDY_ID, study_name: 'Federated AMD Progression — 3-site pilot',
     node_id: 'moorfields-arc-01', status: 'accepted', responded_at: iso(20),
     invited_by_email: 'j.ohanebo@dundee.ac.uk', invited_at: iso(22),
     message: 'Archived OCT volumes, AMD staging labels only. Full governance package attached.',
+    governance: GOV_AMD,
     fl_nodes: { institution_name: 'Moorfields Eye Hospital NHS Foundation Trust', institution_domain: 'nhs.net' },
   },
   {
@@ -94,13 +114,15 @@ const INVITATIONS = [
     node_id: 'edinburgh-srin-02', status: 'accepted', responded_at: iso(19),
     invited_by_email: 'j.ohanebo@dundee.ac.uk', invited_at: iso(22),
     message: 'Archived OCT volumes, AMD staging labels only. Full governance package attached.',
+    governance: GOV_AMD,
     fl_nodes: { institution_name: 'University of Edinburgh / NHS Lothian', institution_domain: 'ed.ac.uk' },
   },
   {
     id: 'demo-inv-3', study_id: DEMO_INVITE_STUDY_ID, study_name: 'Glaucoma progression from archived visual fields',
     node_id: 'moorfields-arc-01', status: 'pending', responded_at: null,
     invited_by_email: 'j.ohanebo@dundee.ac.uk', invited_at: iso(1),
-    message: 'Proposal: OCT + visual-field pairs, 2015–2024 archive. Try accepting this one — you will be shown the Data Use Agreement first.',
+    message: 'Proposal: OCT + visual-field pairs, 2015–2024 archive. Try accepting this one — you will be shown the governance package and Data Use Agreement first.',
+    governance: GOV_GLAUCOMA,
     fl_nodes: { institution_name: 'Moorfields Eye Hospital NHS Foundation Trust', institution_domain: 'nhs.net' },
   },
 ]
@@ -282,6 +304,7 @@ function route(path, method, body) {
         node_id: nodeId, status: 'pending', responded_at: null,
         invited_by_email: DEMO_USER.email, invited_at: new Date().toISOString(),
         message: body?.message || '',
+        governance: body?.governance ? { ...GOV_AMD, ...body.governance } : null,
         fl_nodes: { institution_name: node?.institution_name || nodeId, institution_domain: node?.institution_domain || '' },
       })
     }
