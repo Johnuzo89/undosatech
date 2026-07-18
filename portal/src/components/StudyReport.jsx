@@ -719,7 +719,7 @@ export default function StudyReport({ job }) {
         </div>
         <p style={{ margin: 0, fontSize: 12, color: '#6b7280', lineHeight: 1.7 }}>
           All model weights were aggregated server-side using FedAvg. No raw patient data or imaging left participating institutions at any point.
-          Each node contributed only locally computed gradient updates, preserving patient privacy in compliance with data governance requirements.
+          Each node contributed only locally computed gradient updates, supporting each participating institution&apos;s data governance requirements.
         </p>
       </Sec>
 
@@ -754,7 +754,7 @@ export default function StudyReport({ job }) {
         const ciAcc = job.confidence_intervals?.accuracy
         const paragraph = [
           `We trained a ${archLabel} classifier using Federated Averaging (McMahan et al., 2017) [CITATION] across ${nodeCount} geographically distributed institution${nodeCount !== 1 ? 's' : ''}.`,
-          `No raw patient data or imaging was transferred between sites; only locally computed model weight updates were aggregated at the central server using FedAvg, preserving patient privacy in compliance with data protection requirements.`,
+          `No raw patient data or imaging was transferred between sites; only locally computed model weight updates were aggregated at the central server using FedAvg, in line with each participating institution's data protection requirements.`,
           `Training comprised ${totalRounds} global communication round${totalRounds !== 1 ? 's' : ''}${job.local_epochs ? ` with ${job.local_epochs} local epoch${job.local_epochs !== 1 ? 's' : ''} per round per institution` : ''}.`,
           ds ? `The model was evaluated on the ${ds.full} (${ds.domain}; task: ${ds.task}).` : job.dataset ? `The model was evaluated on the ${job.dataset} dataset.` : '',
           job.dp_enabled

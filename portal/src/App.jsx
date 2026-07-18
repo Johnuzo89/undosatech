@@ -650,7 +650,7 @@ function LaunchForm({ onLaunched, user, session, preselectedNodes = [] }) {
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:form.dp_enabled?16:0}}>
           <div>
             <div style={{fontSize:12,fontWeight:600,color:'#6E6E73',textTransform:'uppercase',letterSpacing:'0.05em'}}>Differential Privacy</div>
-            <div style={{fontSize:12,color:'#6E6E73',marginTop:2}}>NHS IG / GDPR compliant Gaussian noise on model updates</div>
+            <div style={{fontSize:12,color:'#6E6E73',marginTop:2}}>DP-SGD Gaussian noise on model updates — supports NHS IG / GDPR assessments</div>
           </div>
           <div onClick={()=>set('dp_enabled',!form.dp_enabled)}
             style={{width:44,height:26,borderRadius:13,background:form.dp_enabled?'#34C759':'rgba(120,120,128,0.18)',position:'relative',cursor:'pointer',transition:'background 0.2s',flexShrink:0}}>
