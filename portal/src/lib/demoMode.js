@@ -46,6 +46,7 @@ const NODES = [
     status: 'active', connectivity: 'online', gpu_available: true,
     supported_models: ['ResNet-18', 'ResNet-50', 'EfficientNet-B0'], max_samples: 12000,
     host: 'outbound-only', port: 443, tags: ['OCT', 'AMD', 'glaucoma'],
+    authorisation: { authoriser_name: 'Prof. R. Wilson', authoriser_role: 'data_custodian', requested_at: iso(41), confirmed_at: iso(40) },
     registered_at: iso(41), approved_at: iso(39), last_heartbeat: iso(0, 0.02),
     recent_heartbeats: [
       { id: 'hb1', recorded_at: iso(0, 0.02), training_active: false, latency_ms: 38, current_study_id: null },
@@ -59,6 +60,7 @@ const NODES = [
     status: 'active', connectivity: 'online', gpu_available: false,
     supported_models: ['ResNet-18', 'EfficientNet-B0'], max_samples: 8000,
     host: 'outbound-only', port: 443, tags: ['fundus', 'OCT-A', 'AMD'],
+    authorisation: { authoriser_name: 'Dr M. Fraser', authoriser_role: 'pi', requested_at: iso(35), confirmed_at: iso(35) },
     registered_at: iso(35), approved_at: iso(34), last_heartbeat: iso(0, 0.05),
     recent_heartbeats: [
       { id: 'hb4', recorded_at: iso(0, 0.05), training_active: false, latency_ms: 52, current_study_id: null },
@@ -71,6 +73,7 @@ const NODES = [
     status: 'pending', connectivity: 'offline', gpu_available: false,
     supported_models: ['ResNet-18'], max_samples: 4500,
     host: 'outbound-only', port: 443, tags: ['OCT', 'keratoconus'],
+    authorisation: { authoriser_name: 'Dr E. Souter', authoriser_role: 'it_security', requested_at: iso(2), confirmed_at: iso(1) },
     registered_at: iso(2), approved_at: null, last_heartbeat: null,
     recent_heartbeats: [],
   },

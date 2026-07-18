@@ -226,6 +226,24 @@ function NodeDetailModal({ nodeId, session, isAdmin, onClose, onApprove, onSuspe
             ))}
           </div>
 
+          {(() => {
+            const a = node.authorisation;
+            const ROLE = { pi: "Principal Investigator", data_custodian: "Data Custodian", it_security: "IT / Security" };
+            const state = a?.confirmed_at
+              ? { icon: "✓", color: "#32D74B", bg: "rgba(50,215,75,0.08)", text: `Confirmed by ${a.authoriser_name} (${ROLE[a.authoriser_role] || a.authoriser_role}) on ${new Date(a.confirmed_at).toLocaleDateString()}` }
+              : a?.declined_at
+                ? { icon: "✗", color: "#FF3B30", bg: "rgba(255,59,48,0.08)", text: `Declined by ${a.authoriser_name} (${ROLE[a.authoriser_role] || a.authoriser_role}) — node stays blocked` }
+                : a
+                  ? { icon: "⏳", color: "#FF9F0A", bg: "rgba(255,159,10,0.08)", text: `Awaiting confirmation from ${a.authoriser_name} (${ROLE[a.authoriser_role] || a.authoriser_role}) — emailed ${new Date(a.requested_at).toLocaleDateString()}` }
+                  : { icon: "—", color: "#8E8E93", bg: "rgba(142,142,147,0.08)", text: "No institutional authorisation on record — required before this node can be activated" };
+            return (
+              <div style={{ background: state.bg, border: `1px solid ${state.color}33`, borderRadius: 12, padding: "12px 14px", marginBottom: 16 }}>
+                <div style={{ ...label, marginBottom: 4 }}>Institutional authorisation</div>
+                <div style={{ fontSize: 12.5, color: state.color, fontWeight: 600 }}>{state.icon} {state.text}</div>
+              </div>
+            );
+          })()}
+
           {node.supported_models?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ ...label, marginBottom: 8 }}>Supported Models</div>
@@ -325,6 +343,7 @@ function RegisterModal({ onClose, onSuccess }) {
     contact_email: "", host: "", port: 8080,
     gpu_available: false, max_samples: "", supported_models: [],
     tags: "", registration_secret: "",
+    authoriser_name: "", authoriser_role: "data_custodian", authoriser_email: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -396,6 +415,26 @@ function RegisterModal({ onClose, onSuccess }) {
           {field("Max Samples", "max_samples", "number", "10000")}
           {field("Tags (comma-separated)", "tags", "text", "ophthalmology, retinal")}
         </div>
+        <div style={{ background: "rgba(0,122,255,0.06)", border: "1px solid rgba(0,122,255,0.2)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#007AFF", marginBottom: 4 }}>Institutional authorisation</div>
+          <div style={{ fontSize: 11.5, color: "#8E8E93", lineHeight: 1.5, marginBottom: 12 }}>
+            An institutional email alone does not activate a node. Name the PI, data custodian, or IT/security
+            contact who authorises this deployment — they'll receive a confirmation email, and the node stays
+            pending until they confirm. Must be a different person from the node contact, at the same domain.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+            {field("Authoriser Name *", "authoriser_name", "text", "Prof. A. Custodian")}
+            <div style={{ marginBottom: 14 }}>
+              <label style={label}>Authoriser Role *</label>
+              <select value={form.authoriser_role} onChange={e => setForm(f => ({ ...f, authoriser_role: e.target.value }))} style={{ ...inputStyle, appearance: "auto" }}>
+                <option value="pi">Principal Investigator</option>
+                <option value="data_custodian">Data Custodian</option>
+                <option value="it_security">IT / Security</option>
+              </select>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>{field("Authoriser Email *", "authoriser_email", "email", "a.custodian@kch.nhs.uk")}</div>
+          </div>
+        </div>
         <div style={{ marginBottom: 16 }}>
           <label style={{ ...label, marginBottom: 8 }}>Supported Models</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -451,6 +490,9 @@ function SetupGuide() {
 INSTITUTION_NAME=Your Institution Full Name
 INSTITUTION_DOMAIN=youruni.ac.uk
 CONTACT_EMAIL=research-it@youruni.ac.uk
+AUTHORISER_NAME=Prof. A. Custodian
+AUTHORISER_ROLE=data_custodian
+AUTHORISER_EMAIL=a.custodian@youruni.ac.uk
 NODE_REGISTRATION_SECRET=<ask UndosaTech team>
 GPU_AVAILABLE=false
 MAX_SAMPLES=10000

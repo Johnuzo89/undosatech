@@ -42,6 +42,9 @@ NODE_ID                 = os.environ.get("NODE_ID", "").strip()
 INSTITUTION_NAME        = os.environ.get("INSTITUTION_NAME", "").strip()
 INSTITUTION_DOMAIN      = os.environ.get("INSTITUTION_DOMAIN", "").strip()
 CONTACT_EMAIL           = os.environ.get("CONTACT_EMAIL", "").strip()
+AUTHORISER_NAME         = os.environ.get("AUTHORISER_NAME", "").strip()
+AUTHORISER_ROLE         = os.environ.get("AUTHORISER_ROLE", "").strip()
+AUTHORISER_EMAIL        = os.environ.get("AUTHORISER_EMAIL", "").strip()
 NODE_HOST               = os.environ.get("NODE_HOST", "").strip()
 NODE_PORT               = int(os.environ.get("NODE_PORT", "8080"))
 NODE_REGISTRATION_SECRET = os.environ.get("NODE_REGISTRATION_SECRET", "").strip()
@@ -179,6 +182,9 @@ def register() -> str:
         "supported_models": caps["supported_models"],
         "tags": caps["tags"],
         "registration_secret": NODE_REGISTRATION_SECRET,
+        "authoriser_name": AUTHORISER_NAME,
+        "authoriser_role": AUTHORISER_ROLE,
+        "authoriser_email": AUTHORISER_EMAIL,
     }
 
     while not _shutdown.is_set():
@@ -197,10 +203,11 @@ def register() -> str:
                 log.info("✓ Registered. Status: %s", status)
                 if status == "pending":
                     log.info(
-                        "  Your institution domain (%s) requires manual admin approval.\n"
-                        "  The node will still send heartbeats — it will appear in the\n"
-                        "  portal as 'Pending' until an admin approves it.",
-                        INSTITUTION_DOMAIN,
+                        "  Activation is a two-step process:\n"
+                        "  1. Your institutional authoriser (%s) confirms the emailed request.\n"
+                        "  2. UndosaTech approves the node.\n"
+                        "  The node will keep sending heartbeats and appear as 'Pending' until then.",
+                        AUTHORISER_EMAIL or "PI / data custodian / IT security",
                     )
                 return _api_key
 

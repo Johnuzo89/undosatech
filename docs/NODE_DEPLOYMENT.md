@@ -62,9 +62,16 @@ docker compose -f docker-compose.node.yml up -d
 docker compose -f docker-compose.node.yml logs -f   # watch registration
 ```
 
-The node appears in the platform's **Nodes** tab within ~30 seconds.
-Institutional domains (`.ac.uk`, `.nhs.uk`, `.edu`, …) are auto-approved;
-others are reviewed manually.
+The node appears in the platform's **Nodes** tab within ~30 seconds, in
+**pending** state. Activation is deliberately a two-party step — an
+institutional email domain alone does not authorise a deployment:
+
+1. The **institutional authoriser** you named in `.env.node`
+   (`AUTHORISER_NAME` / `AUTHORISER_ROLE` / `AUTHORISER_EMAIL` — a PI, data
+   custodian, or IT/security contact, who must be a different person from the
+   node contact) receives an email and confirms the deployment.
+2. UndosaTech then approves the node. Both events are recorded on the
+   tamper-evident audit chain.
 
 ## Supply-chain verification
 

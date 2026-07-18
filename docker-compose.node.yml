@@ -60,6 +60,9 @@ volumes:
 #   INSTITUTION_NAME=King's College Hospital NHS Foundation Trust
 #   INSTITUTION_DOMAIN=kch.nhs.uk
 #   CONTACT_EMAIL=research-it@kch.nhs.uk
+#   AUTHORISER_NAME=Prof. A. Custodian
+#   AUTHORISER_ROLE=data_custodian        # pi | data_custodian | it_security
+#   AUTHORISER_EMAIL=a.custodian@kch.nhs.uk
 #   NODE_REGISTRATION_SECRET=<ask UndosaTech team for this>
 #   GPU_AVAILABLE=false
 #   MAX_SAMPLES=10000
